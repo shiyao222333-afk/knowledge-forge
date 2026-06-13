@@ -72,10 +72,10 @@ python kb_query.py "KnowledgeForge 是什么" --answer
 
 | ✅ 非常适合 | ❌ 不太适合 |
 |--------------|--------------|
-| 有中文技术文档/手册积累的人 | 只需要英文资料搜索的人（用英文工具更合适） |
-| 截图/照片里有大量文字想搜 | 数据量极小（<10 个文件）且不需要搜索 |
-| 关心数据隐私，不想上传云端 | 想要现成的 Web UI（我们还在做 v0.2） |
-| 需要溯源：答案从哪来的 | 不想碰命令行的人（CLI 操作，GUI 规划中） |
+| 有中文/英文技术文档/手册积累的人 | 数据量极小（<10 个文件）且不需要搜索 |
+| 截图/照片里有大量文字想搜 | 想要现成的 Web UI（我们还在做 v0.2） |
+| 关心数据隐私，不想上传云端 | 不想碰命令行的人（CLI 操作，GUI 规划中） |
+| 需要溯源：答案从哪来的 | |
 | 公式/表格很多的技术文档 | |
 
 ---
@@ -100,6 +100,73 @@ python kb_query.py "KnowledgeForge 是什么" --answer
 **🔗 [点此查看 flow_diagram.md](flow_diagram.md)**
 
 GitHub 原生渲染 Mermaid，点击上方链接即可看到全部流程图。
+
+---
+
+## 🔄 输入操作说明
+
+目前，KnowledgeForge 的输入操作（摄入知识库）主要通过以下方式进行：
+
+### 方式一：通过 AI 助手（推荐）
+
+如果你正在使用 WorkBuddy 或其他 AI 助手，可以直接让 AI 助手帮你执行摄入操作。
+
+**示例对话**：
+```
+用户: 帮我把 D:\Documents\齿轮设计手册.txt 摄入到知识库
+AI: 好的，我来执行...
+   python kb_query.py --ingest "D:\Documents\齿轮设计手册.txt"
+   ...
+   入库成功！切块数: 15
+```
+
+**优势**：
+- ✅ 自然语言操作，不需要记命令
+- ✅ AI 可以帮你批量处理
+- ✅ AI 可以帮你检查OCR质量
+
+### 方式二：命令行操作
+
+```bash
+# 摄入文本文件
+python kb_query.py --ingest "文件路径"
+
+# OCR 图片（自动优化）
+python kb_query.py --ocr "图片路径" --llm-optimize --llm-api-key sk-xxx
+
+# 批量OCR目录
+python ocr_workflow.py "图片目录" --batch --llm-optimize --llm-api-key sk-xxx
+```
+
+### 方式三：通过 IMA 知识库同步（可选）
+
+```bash
+# 从 IMA 知识库同步
+python sync_ima.py --import-dir D:\ima_exports\
+```
+
+---
+
+## 🆚 与类似工具对比
+
+KnowledgeForge 与其他主流本地知识库/RAG工具的详细对比 👉  
+**🔗 [点此查看 COMPARISON.md](COMPARISON.md)**
+
+快速对比：
+
+| 特性 | KnowledgeForge | RAGFlow | AnythingLLM |
+|------|----------------|---------|-------------|
+| 中文优化 | ✅ | ✅ | ✅ |
+| OCR识别 | ✅ | ✅ | ❌ |
+| 公式渲染 | ✅ | ✅ | ❌ |
+| 表格拆分 | ✅ | ❌ | ❌ |
+| Web UI | ❌(规划中) | ✅ | ✅ |
+| 部署难度 | 低 | 中 | 低 |
+
+**选择建议**：
+- 需要处理中文技术文档、公式、表格 → **KnowledgeForge**
+- 需要完整Web UI和团队协作 → **RAGFlow**
+- 需要简单桌面应用 → **AnythingLLM**
 
 ---
 

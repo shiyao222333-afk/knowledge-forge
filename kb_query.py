@@ -1581,6 +1581,7 @@ if __name__ == "__main__":
     parser.add_argument("--ocr", default=None, help="OCR 图片路径")
     parser.add_argument("--engine", default="paddle", choices=["paddle", "tesseract", "structured"], help="OCR 引擎")
     parser.add_argument("--check-only", action="store_true", help="只 OCR 不入库")
+    parser.add_argument("--llm-optimize", action="store_true", help="用LLM优化OCR结果（自动修复错别字）")
     parser.add_argument("--source", default=None, help="来源标识")
     parser.add_argument("--answer", action="store_true", help="端到端问答")
     parser.add_argument("--llm-model", default=None, help="LLM 模型名")
@@ -1595,14 +1596,24 @@ if __name__ == "__main__":
     query_str = " ".join(args.query) if isinstance(args.query, list) else args.query
 
     if args.ocr:
-        do_ocr(
-            args.ocr,
-            source=args.source or "",
-            engine=args.engine,
-            check_only=args.check_only,
-            collection=args.collection,
-            model=args.model
-        )
+        # 导入OCR工作流
+        try:
+            from ocr_workflow import do_ocr
+            do_ocr(
+                image_path=args.ocr,
+                source=args.source or "",
+                engine=args.engine,
+                check_only=args.check_only,
+                collection=args.collection,
+                model=args.model,
+                llm_optimize=args.llm_optimize,
+                llm_api_key=args.llm_api_key or os.environ.get("KB_LLM_API_KEY", ""),
+                llm_base_url=args.llm_base_url or os.environ.get("KB_LLM_BASE_URL", ""),
+                llm_model=args.llm_model or os.environ.get("KB_LLM_MODEL", "deepseek-chat")
+            )
+        except ImportError:
+            print("❌ 错误: ocr_workflow.py 未找到。请确保 ocr_workflow.py 在同一目录下。")
+            sys.exit(1)
     elif args.ingest:
         ingest_text(args.ingest, source=args.source or "", collection=args.collection, model=args.model)
     elif args.text and args.source:

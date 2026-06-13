@@ -93,6 +93,39 @@ flowchart TD
     SAVE --> END
 ```
 
+### OCR详细流程（含LLM优化）
+
+```mermaid
+flowchart TD
+    START([OCR识别]) --> ENGINE{选择引擎}
+    ENGINE -->|默认| PADDLE[PaddleOCR<br>中文优化]
+    ENGINE -->|备选| TESS[Tesseract]
+    ENGINE -->|结构化| STRUCT[PPStructureV3<br>表格+公式]
+    
+    PADDLE --> QUALITY[质量检查]
+    TESS --> QUALITY
+    STRUCT --> QUALITY
+    
+    QUALITY --> CHECK{质量等级?}
+    CHECK -->|good| LLM_OPT[LLM优化<br>自动修复错别字]
+    CHECK -->|warn| LLM_OPT
+    CHECK -->|bad| FEEDBACK[反馈用户<br>建议重新拍摄]
+    
+    LLM_OPT --> OPT_RESULT{优化结果?}
+    OPT_RESULT -->|优化成功| CONTINUE[继续入库]
+    OPT_RESULT -->|优化失败| ORIGINAL[使用原始OCR结果]
+    
+    FEEDBACK --> CHECK_ONLY{预览模式?}
+    CHECK_ONLY -->|是| PREVIEW[显示识别结果<br>不入库]
+    CHECK_ONLY -->|否| FORCE[强制入库]
+    
+    CONTINUE --> CHUNK[语义分块]
+    ORIGINAL --> CHUNK
+    FORCE --> CHUNK
+    PREVIEW --> END([结束])
+    CHUNK --> END
+```
+
 ---
 
 ## 三、查询与回答生成流程
