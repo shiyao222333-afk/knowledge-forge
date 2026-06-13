@@ -1,0 +1,33 @@
+# PrivateGPT 知识库引擎
+# ============
+
+# 本地数据（图片、索引、报告）
+local_data/
+qdrant_data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 日志
+*.log
+
+# 临时文件
+tmp.*.json
+katex_in_*.json
+katex_out_*.json
+
+# OCR 临时文件
+*_ocr_tmp.txt
