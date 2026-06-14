@@ -33,7 +33,11 @@ import os
 import argparse
 import re
 import subprocess
+import io
+import base64
+import math
 from typing import Optional
+from collections import defaultdict
 import hashlib
 import uuid
 from datetime import datetime, timezone
@@ -49,19 +53,29 @@ except ImportError:
     XPos = None
     YPos = None
 
+try:
+    from PIL import Image as PILImage
+    HAS_PIL = True
+except ImportError:
+    PILImage = None
+    HAS_PIL = False
+
 # 图片存储目录
 IMAGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_data", "images")
+# 摄入日志（每行一条 JSON，记录原始文件路径和集合，用于重建）
+INGEST_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_data", "ingest_log.jsonl")
 
-# Tesseract 备选
-TESSERACT = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-os.environ["TESSDATA_PREFIX"] = r"D:\Tesseract-OCR\tessdata"
+# Tesseract 备选（可通过环境变量覆盖）
+_TESSERACT_FALLBACK = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+TESSERACT = os.environ.get("KB_TESSERACT_PATH") or _TESSERACT_FALLBACK
+os.environ.setdefault("TESSDATA_PREFIX", os.environ.get("KB_TESSDATA_PREFIX") or r"D:\Tesseract-OCR\tessdata")
 
 # PaddleOCR 主力引擎（延迟初始化）
 _paddle_ocr = None
 
 OLLAMA_URL = "http://localhost:11434"
 QDRANT_URL = "http://localhost:6333"
-EMBED_MODEL = "qwen3-embedding:4b"   # 主力：qwen3-embedding 2560维 40K上下文
+EMBED_MODEL = os.environ.get("KB_EMBED_MODEL", "qwen3-embedding:4b")   # 主力：qwen3-embedding 2560维 40K上下文
 EMBED_DIM = 2560                       # qwen3-embedding:4b 输出维度
 DEFAULT_COLLECTION = "zgptvector_v2"   # 2560维 Qdrant 集合
 
@@ -165,6 +179,10 @@ def _ocr_tesseract(image_path: str, lang: str = "chi_sim+eng") -> dict:
     }
 
 
+# PPStructureV3 引擎（延迟初始化）
+_structure_engine = None
+
+
 def _get_structure_engine():
     """延迟初始化 PPStructureV3（首次调用才加载模型）"""
     global _structure_engine
@@ -189,21 +207,20 @@ def _get_structure_engine():
 
 def _html_table_to_markdown(html_text: str) -> str:
     """将 HTML <table> 转换为 Markdown 表格（简化版，处理 PPStructureV3 输出）"""
-    import re as _re
 
     def _convert_table(match):
         table_html = match.group(0)
-        rows = _re.findall(r'<tr>(.*?)</tr>', table_html, _re.DOTALL)
+        rows = re.findall(r'<tr>(.*?)</tr>', table_html, re.DOTALL)
         md_rows = []
         for row_idx, row in enumerate(rows):
-            cells = _re.findall(r'<(?:td|th).*?>(.*?)</(?:td|th)>', row, _re.DOTALL | _re.IGNORECASE)
+            cells = re.findall(r'<(?:td|th).*?>(.*?)</(?:td|th)>', row, re.DOTALL | re.IGNORECASE)
             # 清理单元格内的 HTML 标签（保留 $...$ 和图片标记）
             clean_cells = []
             for c in cells:
-                c = _re.sub(r'<img\s+src="([^"]+)"[^>]*>', r'[image: \1]', c)
-                c = _re.sub(r'<div[^>]*>', ' ', c)
-                c = _re.sub(r'</div>', '', c)
-                c = _re.sub(r'<[^>]+>', '', c)
+                c = re.sub(r'<img\s+src="([^"]+)"[^>]*>', r'[image: \1]', c)
+                c = re.sub(r'<div[^>]*>', ' ', c)
+                c = re.sub(r'</div>', '', c)
+                c = re.sub(r'<[^>]+>', '', c)
                 c = c.strip()
                 # 管道符需要转义
                 c = c.replace('|', '\\|')
@@ -213,8 +230,8 @@ def _html_table_to_markdown(html_text: str) -> str:
                 md_rows.append('|' + '|'.join([' --- ' for _ in clean_cells]) + '|')
         return '\n'.join(md_rows)
 
-    html_text = _re.sub(r'(?:<div[^>]*>\s*)?<html><body>\s*<table[^>]*>.*?</table>\s*</body></html>\s*(?:</div>)?',
-                        _convert_table, html_text, flags=_re.DOTALL)
+    html_text = re.sub(r'(?:<div[^>]*>\s*)?<html><body>\s*<table[^>]*>.*?</table>\s*</body></html>\s*(?:</div>)?',
+                        _convert_table, html_text, flags=re.DOTALL)
     return html_text
 
 
@@ -374,78 +391,6 @@ def _assemble_blocks_v2(blocks: list, page_idx: int, image_list: list, source_im
     return "\n".join(parts)
 
 
-def _assemble_blocks(blocks: list, page_idx: int, image_list: list, source_image: str = "") -> str:
-    """
-    将版面区块列表组装成统一文本。
-    区块类型: text（文字）、formula（公式）、table（表格）、figure（图表）
-    """
-    if not blocks:
-        return ""
-
-    parts = []
-    for block in blocks:
-        block_type = block.get('type', 'text')
-        content = block.get('content', '')
-
-        if block_type == 'formula':
-            # 公式：确保用 $$...$$ 包裹
-            if not content.startswith('$$'):
-                content = f"$${content}$$" if '$$' not in content else content
-            parts.append(content)
-
-        elif block_type == 'table':
-            # 表格：content 应该已经是 Markdown 格式
-            parts.append(content)
-
-        elif block_type == 'figure':
-            # 图表/示意图：查找裁剪文件，保存并生成引用
-            # PPStructureV3 的 layout blocks 可能用不同 key: cropped_image_path / img
-            fig_path = (
-                block.get('cropped_image_path', '')
-                or block.get('img', '')
-                or block.get('image_path', '')
-            )
-            bbox = block.get('bbox', None)  # 可选：用于按坐标从原图裁剪
-
-            resolved = None
-            if fig_path and isinstance(fig_path, str) and os.path.isfile(fig_path):
-                resolved = fig_path
-
-            # 如果没有裁剪文件但有 bbox，从原图手动裁剪（格式: [x0,y0,x1,y1]）
-            if not resolved and bbox and source_image:
-                try:
-                    from PIL import Image
-                    img = Image.open(source_image)
-                    cropped = img.crop(bbox[:4])
-                    _ensure_images_dir()
-                    dest_name = f"fig_p{page_idx}_{len(image_list)}.png"
-                    resolved = os.path.join(IMAGES_DIR, dest_name)
-                    cropped.save(resolved)
-                except Exception:
-                    resolved = None
-
-            if resolved:
-                _ensure_images_dir()
-                import shutil
-                dest_name = f"fig_p{page_idx}_{len(image_list)}.png"
-                dest_path = os.path.join(IMAGES_DIR, dest_name)
-                shutil.copy2(resolved, dest_path)
-                image_list.append(dest_path)
-                parts.append(f"[图表] 图{page_idx+1}-{len(image_list)}")
-                parts.append(f"[image: {dest_path}]")
-            else:
-                parts.append("[图表] 图表区域已检测，但缺少裁剪数据")
-
-        else:  # text or unknown
-            parts.append(content)
-
-    return "\n".join(parts)
-
-
-# PPStructureV3 引擎（延迟初始化）
-_structure_engine = None
-
-
 def _check_ocr_quality(ocr_result: dict, image_path: str = None) -> dict:
     """
     检查 OCR 识别质量。
@@ -510,7 +455,23 @@ def _check_ocr_quality(ocr_result: dict, image_path: str = None) -> dict:
     }
 
 def _embed(texts: list[str], model: str = EMBED_MODEL) -> list[list[float]]:
-    """调用 Ollama 批量获取嵌入向量"""
+    """调用 Ollama 批量获取嵌入向量（优先批量，失败回退逐条）。"""
+    if not texts:
+        return []
+    # 尝试批量 API（Ollama /api/embed 支持 input 数组）
+    try:
+        resp = requests.post(
+            f"{OLLAMA_URL}/api/embed",
+            json={"model": model, "input": texts},
+            timeout=120
+        )
+        resp.raise_for_status()
+        embeddings = resp.json().get("embeddings", [])
+        if embeddings and len(embeddings) == len(texts):
+            return embeddings
+    except Exception:
+        pass  # 回退到逐条
+    # 逐条回退
     vectors = []
     for text in texts:
         resp = requests.post(
@@ -523,24 +484,438 @@ def _embed(texts: list[str], model: str = EMBED_MODEL) -> list[list[float]]:
     return vectors
 
 
-def _check_qdrant():
-    """检查 Qdrant 是否运行并确保集合存在"""
+def _check_qdrant() -> bool:
+    """检查 Qdrant 是否运行（纯检查，无副作用）。"""
     try:
         resp = requests.get(f"{QDRANT_URL}/collections", timeout=5)
-        if resp.status_code != 200:
-            return False
-        collections = resp.json()
-        names = [c["name"] for c in collections["result"]["collections"]]
-        if DEFAULT_COLLECTION not in names:
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def _ensure_collection(collection: str) -> bool:
+    """确保指定集合存在，不存在则自动创建。"""
+    if not _check_qdrant():
+        return False
+    try:
+        resp = requests.get(f"{QDRANT_URL}/collections", timeout=5)
+        names = [c["name"] for c in resp.json()["result"]["collections"]]
+        if collection not in names:
             requests.put(
-                f"{QDRANT_URL}/collections/{DEFAULT_COLLECTION}",
-                json={
-                    "vectors": {"size": EMBED_DIM, "distance": "Cosine"}
-                }
+                f"{QDRANT_URL}/collections/{collection}",
+                json={"vectors": {"size": EMBED_DIM, "distance": "Cosine"}},
+                timeout=10
             )
         return True
     except Exception:
         return False
+
+
+def list_collections() -> dict:
+    """
+    列出所有 Qdrant 知识库集合。
+
+    返回:
+        {"ok": true, "collections": [{"name": "...", "points": N, "dim": N}, ...]}
+    """
+    if not _check_qdrant():
+        return {"ok": False, "error": "Qdrant 未运行"}
+    try:
+        resp = requests.get(f"{QDRANT_URL}/collections", timeout=5)
+        resp.raise_for_status()
+        all_cols = resp.json()["result"]["collections"]
+        result = []
+        for c in all_cols:
+            name = c["name"]
+            try:
+                info = requests.get(f"{QDRANT_URL}/collections/{name}", timeout=5).json()
+                cfg = info.get("result", {}).get("config", {}).get("params", {}).get("vectors", {})
+                pts = info.get("result", {}).get("points_count", 0)
+                result.append({
+                    "name": name,
+                    "points": pts,
+                    "dim": cfg.get("size", "?") if cfg else "?",
+                })
+            except Exception:
+                result.append({"name": name, "points": "?", "dim": "?"})
+        return {"ok": True, "collections": result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def clear_collection(collection: str = DEFAULT_COLLECTION) -> dict:
+    """
+    清空指定知识库集合（删除所有向量点，但保留集合结构）。
+
+    参数:
+        collection: 集合名称
+
+    返回:
+        {"ok": true, "deleted": N, "collection": "..."}
+    """
+    if not _check_qdrant():
+        return {"ok": False, "error": "Qdrant 未运行"}
+    try:
+        # 获取当前点数
+        info = requests.get(f"{QDRANT_URL}/collections/{collection}", timeout=5).json()
+        points_count = info.get("result", {}).get("points_count", 0)
+
+        if points_count == 0:
+            return {"ok": True, "deleted": 0, "collection": collection, "message": "集合已为空"}
+
+        # 分批删除所有点（scroll + delete）
+        deleted_total = 0
+        while True:
+            scroll_resp = requests.post(
+                f"{QDRANT_URL}/collections/{collection}/points/scroll",
+                json={"limit": 1000, "with_payload": False, "with_vector": False},
+                timeout=30
+            )
+            scroll_resp.raise_for_status()
+            points = scroll_resp.json()["result"].get("points", [])
+            if not points:
+                break
+            ids = [p["id"] for p in points]
+            del_resp = requests.post(
+                f"{QDRANT_URL}/collections/{collection}/points/delete",
+                json={"points": ids},
+                timeout=30
+            )
+            del_resp.raise_for_status()
+            deleted_total += len(ids)
+
+        return {"ok": True, "deleted": deleted_total, "collection": collection}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def delete_collection(collection: str) -> dict:
+    """
+    完全删除一个知识库集合（包括集合结构）。
+
+    参数:
+        collection: 集合名称
+
+    返回:
+        {"ok": true, "collection": "..."}
+    """
+    if not _check_qdrant():
+        return {"ok": False, "error": "Qdrant 未运行"}
+    try:
+        resp = requests.delete(f"{QDRANT_URL}/collections/{collection}", timeout=10)
+        resp.raise_for_status()
+        return {"ok": True, "collection": collection, "message": "集合已删除"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def get_embed_models() -> list[str]:
+    """
+    从 Ollama 获取本地可用的嵌入模型列表。
+
+    返回:
+        ["qwen3-embedding:4b", ...] 或空列表
+    """
+    try:
+        resp = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        # 常见嵌入模型关键词
+        embed_keywords = ["embed", "e5", "bge", "gte", "jina"]
+        models = []
+        for m in data.get("models", []):
+            name = m.get("name", "").lower()
+            # 嵌入模型通常包含这些关键词，或者直接返回所有模型让用户选
+            models.append(m["name"])
+        return models
+    except Exception:
+        return []
+
+
+def has_any_data() -> bool:
+    """
+    检查任意 Qdrant 集合中是否有数据（用于判断是否锁定分类法/嵌入模型选择）。
+    """
+    try:
+        col_list = list_collections()
+        if not col_list.get("ok"):
+            return False
+        for c in col_list.get("collections", []):
+            if c.get("points", 0) > 0:
+                return True
+        return False
+    except Exception:
+        return False
+
+
+# ═══════════════════════════════════════════
+# 摄入日志（ingest_log.jsonl）
+# 每行一条 JSON 记录，用于知识库重建
+# ═══════════════════════════════════════════
+
+def _log_ingest(entry: dict):
+    """
+    摄入成功后写一行日志到 ingest_log.jsonl。
+    entry 格式:
+    {
+        "source_file": "D:/data/齿轮设计.txt",   # 原始文件路径（绝对路径）
+        "source_text": null,                    # 手动输入时为文本内容（前 500 字）
+        "collection": "TH",
+        "doc_id": "a1b2c3d4",
+        "content_hash": "f3e8a...",
+        "embed_model": "qwen3-embedding:4b",
+        "ingested_at": "2026-06-14T12:00:00Z"
+    }
+    """
+    try:
+        os.makedirs(os.path.dirname(INGEST_LOG_PATH), exist_ok=True)
+        with open(INGEST_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # 日志写入失败不影响主流程
+
+
+def read_ingest_log() -> list[dict]:
+    """
+    读取摄入日志，返回所有记录列表。
+    如果文件不存在或格式错误，返回空列表。
+    """
+    if not os.path.isfile(INGEST_LOG_PATH):
+        return []
+    entries = []
+    try:
+        with open(INGEST_LOG_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except Exception:
+                    continue
+        return entries
+    except Exception:
+        return []
+
+
+def search_multi(
+    query: str,
+    collections: list[str] = None,
+    top_k: int = 5,
+    score_threshold: float = 0.3,
+    model: str = None,
+) -> dict:
+    """
+    跨多个集合搜索，合并后用 z-score 归一化重排。
+
+    参数:
+        query: 搜索问题
+        collections: 要搜索的集合列表，None 表示搜所有非空集合
+        top_k: 每个集合取 top_k，合并后最终返回 top_k
+        score_threshold: 最低相似度阈值
+        model: 嵌入模型（默认用 EMBED_MODEL）
+
+    返回:
+        {
+            "ok": true/false,
+            "query": "...",
+            "total": 合并后总数,
+            "chunks": [...],           # 已按归一化分数重排
+            "per_collection": {...}      # 每个集合的原始结果数
+        }
+    """
+    if model is None:
+        model = EMBED_MODEL
+
+    # 确定要搜索的集合
+    if collections is None:
+        col_list = list_collections()
+        if not col_list.get("ok"):
+            return {"ok": False, "error": "无法列出集合"}
+        collections = [c["name"] for c in col_list.get("collections", [])]
+
+    if not collections:
+        return {"ok": True, "query": query, "total": 0, "chunks": []}
+
+    # 嵌入查询
+    try:
+        query_vec = _embed([query], model=model)[0]
+    except Exception as e:
+        return {"ok": False, "error": f"嵌入查询失败: {e}"}
+
+    # 并行搜索所有集合（收集原始分数用于归一化）
+    all_raw = []  # [(chunk_dict, original_score, collection_name)]
+    per_col = {}
+
+    for col in collections:
+        try:
+            resp = requests.post(
+                f"{QDRANT_URL}/collections/{col}/points/search",
+                json={
+                    "vector": query_vec,
+                    "limit": top_k,
+                    "with_payload": True,
+                    "score_threshold": score_threshold
+                },
+                timeout=30
+            )
+            resp.raise_for_status()
+            results = resp.json()["result"]
+            per_col[col] = len(results)
+
+            for r in results:
+                payload = r.get("payload", {})
+                all_raw.append((
+                    {
+                        "text": payload.get("text", ""),
+                        "source": payload.get("source", "未知"),
+                        "score": round(r.get("score", 0), 4),
+                        "chunk_index": payload.get("chunk_index", 0),
+                        "doc_id": payload.get("doc_id", ""),
+                        "book": payload.get("book", ""),
+                        "chapter": payload.get("chapter", ""),
+                        "page": payload.get("page", ""),
+                        "images": payload.get("images", []),
+                        "_collection": col,          # 标记来源集合
+                    },
+                    r.get("score", 0),              # 原始分数（用于归一化）
+                    col
+                ))
+        except Exception:
+            per_col[col] = 0
+
+    if not all_raw:
+        return {"ok": True, "query": query, "total": 0, "chunks": [], "per_collection": per_col}
+
+    # z-score 归一化（每个集合内单独计算）
+    # 分组：{col_name: [(chunk, raw_score)]}
+    col_groups = defaultdict(list)
+    for chunk, raw_score, col in all_raw:
+        col_groups[col].append((chunk, raw_score))
+
+    normalized = []
+    for col, items in col_groups.items():
+        scores = [s for _, s in items]
+        if len(scores) <= 1:
+            # 只有一个结果，无法计算标准差，直接用原始分数
+            for chunk, s in items:
+                chunk["score_normalized"] = round(s, 4)
+                normalized.append(chunk)
+            continue
+        mean_s = sum(scores) / len(scores)
+        std_s = (sum((s - mean_s) ** 2 for s in scores) / len(scores)) ** 0.5
+        if std_s < 1e-9:
+            # 分数几乎相同，归一化无意义
+            for chunk, s in items:
+                chunk["score_normalized"] = round(s, 4)
+                normalized.append(chunk)
+            continue
+        for chunk, s in items:
+            z = (s - mean_s) / std_s
+            # 把 z-score 压缩到 0~1 范围（sigmoid 变换）
+            norm = 1 / (1 + math.exp(-z))
+            chunk["score_normalized"] = round(norm, 4)
+            normalized.append(chunk)
+
+    # 按归一化分数降序排列
+    normalized.sort(key=lambda x: x["score_normalized"], reverse=True)
+
+    # 取 top_k
+    top = normalized[:top_k]
+    for t in top:
+        t["score"] = t.pop("score_normalized")   # 用归一化分数替换原始分数
+
+    return {
+        "ok": True,
+        "query": query,
+        "total": len(top),
+        "chunks": top,
+        "per_collection": per_col,
+    }
+
+
+def rebuild_from_log(
+    target_collections: list[str] = None,
+    progress_callback=None,
+) -> dict:
+    """
+    从摄入日志读取原始文件，用当前嵌入模型重新摄入到目标集合。
+
+    参数:
+        target_collections: 要重建的集合列表，None 表示重建日志中出现的所有集合
+        progress_callback: 进度回调函数 callback(current, total, message)
+
+    返回:
+        {"ok": true, "rebuilt": N, "skipped": N, "errors": [...]}
+    """
+    entries = read_ingest_log()
+    if not entries:
+        return {"ok": False, "error": "摄入日志为空，无法重建"}
+
+    total = len(entries)
+    rebuilt = 0
+    skipped = 0
+    errors = []
+
+    for i, entry in enumerate(entries):
+        if progress_callback:
+            progress_callback(i, total, f"处理 {entry.get('source_file', '未知文件')[:50]}...")
+
+        src = entry.get("source_file", "")
+        collection = entry.get("collection", DEFAULT_COLLECTION)
+        doc_id = entry.get("doc_id", "")
+
+        # 检查目标集合（如果指定了）
+        if target_collections and collection not in target_collections:
+            skipped += 1
+            continue
+
+        # 尝试从原始文件重新摄入
+        if src and os.path.isfile(src):
+            try:
+                result = ingest(
+                    file_path=src,
+                    metadata={"source": os.path.basename(src), "doc_id": doc_id},
+                    collection=collection,
+                    skip_duplicates=True,
+                )
+                if result.get("ok"):
+                    rebuilt += 1
+                elif "重复" in result.get("error", ""):
+                    skipped += 1   # 已存在，跳过
+                else:
+                    errors.append(f"{src}: {result.get('error', '')}")
+            except Exception as e:
+                errors.append(f"{src}: {e}")
+        elif entry.get("source_text"):
+            # 手动输入的文本，用日志里保存的片段重新摄入
+            try:
+                result = ingest(
+                    text=entry["source_text"],
+                    metadata={"source": "手动输入（重建）", "doc_id": doc_id},
+                    collection=collection,
+                    skip_duplicates=True,
+                )
+                if result.get("ok"):
+                    rebuilt += 1
+                else:
+                    skipped += 1
+            except Exception as e:
+                errors.append(f"手动输入({doc_id}): {e}")
+        else:
+            errors.append(f"{src}: 原始文件不存在，且无法从日志恢复文本内容")
+            skipped += 1
+
+    if progress_callback:
+        progress_callback(total, total, "重建完成")
+
+    return {
+        "ok": True,
+        "rebuilt": rebuilt,
+        "skipped": skipped,
+        "errors": errors,
+        "total_entries": total,
+    }
 
 
 def _text_hash(text: str) -> str:
@@ -576,6 +951,8 @@ def _extract_images(text: str) -> list[str]:
 def _ensure_images_dir():
     """确保图片存储目录存在"""
     os.makedirs(IMAGES_DIR, exist_ok=True)
+
+
 def _chunk_text(text: str, max_chars: int = 800, overlap: int = 60) -> list[str]:
     """
     将文本切分为重叠的块。
@@ -683,8 +1060,8 @@ def ingest(
     返回:
         {"ok": true/false, "chunks": N, "collection": "...", "source": "..."}
     """
-    if not _check_qdrant():
-        return {"ok": False, "error": "Qdrant 未运行。请先启动 start.bat。"}
+    if not _ensure_collection(collection):
+        return {"ok": False, "error": "Qdrant 未运行。请先启动 Qdrant（双击 run.bat）。"}
 
     # 读取内容
     if file_path:
@@ -761,6 +1138,8 @@ def ingest(
     doc_id = base_meta.get("doc_id", str(uuid.uuid4())[:8])
     ingested_at = datetime.now(timezone.utc).isoformat()
     full_text_hash = _text_hash(text)
+    # category：用于路线1（单库+标签过滤），默认取集合名
+    category = base_meta.get("category", collection)
 
     points = []
     for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
@@ -776,7 +1155,8 @@ def ingest(
                 "content_hash": full_text_hash,
                 "ingested_at": ingested_at,
                 "images": valid_images,
-                **base_meta
+                "category": category,
+                **{k: v for k, v in base_meta.items() if k not in ("category", "doc_id")}
             }
         })
 
@@ -790,6 +1170,18 @@ def ingest(
         resp.raise_for_status()
     except Exception as e:
         return {"ok": False, "error": f"写入 Qdrant 失败: {e}"}
+
+    # 写入摄入日志
+    _log_ingest({
+        "source_file": file_path or "",
+        "source_text": text[:500] if not file_path else None,
+        "collection": collection,
+        "doc_id": doc_id,
+        "content_hash": full_text_hash,
+        "embed_model": model,
+        "ingested_at": ingested_at,
+        "category": category,
+    })
 
     return {
         "ok": True,
@@ -807,21 +1199,30 @@ def search(
     top_k: int = 5,
     collection: str = DEFAULT_COLLECTION,
     score_threshold: float = 0.3,
-    model: str = EMBED_MODEL
+    model: str = EMBED_MODEL,
+    category_filter: list[str] = None,
 ) -> dict:
     """
     向量搜索知识库。
-    
+
+    参数:
+        query: 搜索问题
+        top_k: 返回结果数
+        collection: 搜索的集合
+        score_threshold: 最低相似度
+        model: 嵌入模型
+        category_filter: 分类过滤列表（路线1用），只返回 category 在列表中的结果
+
     返回结构:
     {
         "ok": true/false,
         "query": "原始查询",
         "total": 匹配数,
-        "chunks": [{"text": "...", "source": "...", "score": 0.95}, ...]
+        "chunks": [{"text": "...", "source": "...", "score": 0.95, "category": "..."}, ...]
     }
     """
-    if not _check_qdrant():
-        return {"ok": False, "error": "Qdrant 未运行。请先启动 start.bat。"}
+    if not _ensure_collection(collection):
+        return {"ok": False, "error": "Qdrant 未运行。请先启动 Qdrant（双击 run.bat）。"}
 
     # 嵌入查询
     try:
@@ -829,16 +1230,29 @@ def search(
     except Exception as e:
         return {"ok": False, "error": f"嵌入查询失败: {e}"}
 
+    # 构建过滤条件
+    qdrant_filter = None
+    if category_filter:
+        qdrant_filter = {
+            "must": [
+                {"key": "category", "match": {"any": category_filter}}
+            ]
+        }
+
     # 搜索 Qdrant
     try:
+        search_body = {
+            "vector": query_vec,
+            "limit": top_k,
+            "with_payload": True,
+            "score_threshold": score_threshold
+        }
+        if qdrant_filter:
+            search_body["filter"] = qdrant_filter
+
         resp = requests.post(
             f"{QDRANT_URL}/collections/{collection}/points/search",
-            json={
-                "vector": query_vec,
-                "limit": top_k,
-                "with_payload": True,
-                "score_threshold": score_threshold
-            },
+            json=search_body,
             timeout=30
         )
         resp.raise_for_status()
@@ -859,7 +1273,8 @@ def search(
             "book": payload.get("book", ""),
             "chapter": payload.get("chapter", ""),
             "page": payload.get("page", ""),
-            "images": payload.get("images", [])
+            "images": payload.get("images", []),
+            "category": payload.get("category", ""),
         })
 
     return {
@@ -909,10 +1324,9 @@ def _renumber_citations(synthesis: str, citation_keys: list) -> tuple[str, list[
     正则提取回答中实际使用的引用编号，重编号为连续 1~N。
     返回 (重编号后文本, 实际使用的原始引用索引列表(1-based))。
     """
-    import re as _re
 
     # 兼容多种格式：[引用5] [引用 5] 引用5 引用 5
-    used_raw = _re.findall(r'\[?引用\s*(\d+)\]?', synthesis)
+    used_raw = re.findall(r'\[?引用\s*(\d+)\]?', synthesis)
     if not used_raw:
         return synthesis, []
 
@@ -940,7 +1354,7 @@ def _renumber_citations(synthesis: str, citation_keys: list) -> tuple[str, list[
         else:
             return f"引用{new_num}"
 
-    new_text = _re.sub(r'\[?引用\s*(\d+)\]?', _replace, synthesis)
+    new_text = re.sub(r'\[?引用\s*(\d+)\]?', _replace, synthesis)
     return new_text, used
 
 
@@ -1004,7 +1418,6 @@ def _expand_chunks(chunks: list, threshold: int = None) -> list:
     展开 chunks：表格行数 > threshold 时，按行拆分为虚拟 chunk。
     返回展开后的 chunks 列表（长度 >= len(chunks)）。
     """
-    import re as _re
     if threshold is None:
         threshold = TABLE_SPLIT_THRESHOLD
 
@@ -1035,7 +1448,6 @@ def _build_synthesis_prompt(query: str, chunks: list, table_split_threshold: int
 
     返回 (prompt_text, citation_keys)。
     """
-    import re as _re
 
     if table_split_threshold is None:
         table_split_threshold = TABLE_SPLIT_THRESHOLD
@@ -1103,19 +1515,23 @@ def _img_to_b64(img_path: str, max_w: int = 800) -> str:
     自动缩小到 max_w 像素以内（避免 HTML 文件过大）。
     失败返回空字符串。
     """
-    import base64
-    try:
-        from PIL import Image as PILImage
-        with PILImage.open(img_path) as im:
-            w, h = im.size
-            if w > max_w:
-                ratio = max_w / w
-                im = im.resize((int(w * ratio), int(h * ratio)), PILImage.LANCZOS)
-            import io
-            buf = io.BytesIO()
-            im.save(buf, format=im.format or "PNG")
-            data = base64.b64encode(buf.getvalue()).decode()
-    except Exception:
+    if HAS_PIL:
+        try:
+            with PILImage.open(img_path) as im:
+                w, h = im.size
+                if w > max_w:
+                    ratio = max_w / w
+                    im = im.resize((int(w * ratio), int(h * ratio)), PILImage.LANCZOS)
+                buf = io.BytesIO()
+                im.save(buf, format=im.format or "PNG")
+                data = base64.b64encode(buf.getvalue()).decode()
+        except Exception:
+            try:
+                with open(img_path, "rb") as f:
+                    data = base64.b64encode(f.read()).decode()
+            except Exception:
+                return ""
+    else:
         try:
             with open(img_path, "rb") as f:
                 data = base64.b64encode(f.read()).decode()
@@ -1129,14 +1545,15 @@ def _img_to_b64(img_path: str, max_w: int = 800) -> str:
 
 # ── KaTeX 服务端渲染 ──
 _KATEX_CSS = None
-_NODE_BIN = r"C:\Users\Lenovo\.workbuddy\binaries\node\versions\22.22.2\node.exe"
+_NODE_BIN = os.environ.get("KB_NODE_BIN") or "node"
+_NPM_ROOT = os.environ.get("KB_NPM_ROOT") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "node_modules")
 _KATEX_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "render_math.js")
 
 def _katex_css() -> str:
     """返回 KaTeX CSS（惰性加载，只读一次）。"""
     global _KATEX_CSS
     if _KATEX_CSS is None:
-        css_path = r"C:\Users\Lenovo\.workbuddy\binaries\node\workspace\node_modules\katex\dist\katex.min.css"
+        css_path = os.path.join(_NPM_ROOT, "katex", "dist", "katex.min.css")
         try:
             with open(css_path, "r", encoding="utf-8") as f:
                 _KATEX_CSS = f.read()
@@ -1181,7 +1598,7 @@ def _katex_post_process(html: str) -> str:
             json.dump({"formulas": batch}, f, ensure_ascii=False)
 
         env = os.environ.copy()
-        env["NODE_PATH"] = r"C:\Users\Lenovo\.workbuddy\binaries\node\workspace\node_modules"
+        env["NODE_PATH"] = _NPM_ROOT
         result = subprocess.run(
             [_NODE_BIN, _KATEX_SCRIPT, tmp_in, tmp_out],
             capture_output=True, text=True, timeout=30, env=env
@@ -1218,6 +1635,18 @@ def _katex_post_process(html: str) -> str:
                 pass
 
 
+# ── 公式文本 → HTML span 工具函数 ──
+FORMULA_BLOCK_RE = re.compile(r'\$\$([\s\S]+?)\$\$')
+FORMULA_INLINE_RE = re.compile(r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)')
+
+
+def _formula_to_html_spans(text: str) -> str:
+    """将 LaTeX 公式转为 <span class="formula-block/inline"> 标记，供 KaTeX 后处理。"""
+    text = FORMULA_BLOCK_RE.sub(r'<span class="formula-block">\1</span>', text)
+    text = FORMULA_INLINE_RE.sub(r'<span class="formula-inline">\1</span>', text)
+    return text
+
+
 def _render_report_html(query: str, synthesis: str, chunks: list, output_dir: str, used: list = None, citation_keys: list = None) -> str:
     """
     渲染两层报告 HTML：上层 AI 回答 + 下层原始素材。
@@ -1248,16 +1677,7 @@ def _render_report_html(query: str, synthesis: str, chunks: list, output_dir: st
     )
 
     # 公式：先处理 $$..$$（多行），再处理 $..$（单行，排除 $$ 边界）
-    synthesis_html = re.sub(
-        r'\$\$([\s\S]+?)\$\$',
-        r'<span class="formula-block">\1</span>',
-        synthesis_html
-    )
-    synthesis_html = re.sub(
-        r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)',
-        r'<span class="formula-inline">\1</span>',
-        synthesis_html
-    )
+    synthesis_html = _formula_to_html_spans(synthesis_html)
 
     # ── 收集所有图片路径 ──
     all_images = []
@@ -1296,16 +1716,7 @@ def _render_report_html(query: str, synthesis: str, chunks: list, output_dir: st
                 lambda m: _img_tag(m.group(1).strip()),
                 escaped
             )
-            escaped = re.sub(
-                r'\$\$([\s\S]+?)\$\$',
-                r'<span class="formula-block">\1</span>',
-                escaped
-            )
-            escaped = re.sub(
-                r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)',
-                r'<span class="formula-inline">\1</span>',
-                escaped
-            )
+            escaped = _formula_to_html_spans(escaped)
             result.append(escaped)
         return '\n'.join(result)
 
@@ -1314,10 +1725,7 @@ def _render_report_html(query: str, synthesis: str, chunks: list, output_dir: st
         def _cell_html(raw: str) -> str:
             """处理 table cell: [image: ...] → <img>，$...$ 包裹 formula span 供 KaTeX 后处理。"""
             s = raw
-            # $$ 块公式
-            s = re.sub(r'\$\$([\s\S]+?)\$\$', r'<span class="formula-block">\1</span>', s)
-            # $ 行内公式（排除 $$ 边界）
-            s = re.sub(r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)', r'<span class="formula-inline">\1</span>', s)
+            s = _formula_to_html_spans(s)
             # 图片引用
             s = re.sub(r'\[image:\s*(.+?)\]', lambda m: _img_tag(m.group(1).strip()), s)
             return s
@@ -1385,12 +1793,15 @@ def _render_report_html(query: str, synthesis: str, chunks: list, output_dir: st
 
         images_html = ""
         if images_list:
-            imgs = "".join(
-                f'<div class="ev-img-wrap"><img src="{_img_to_b64(img, max_w=700)}" class="evidence-img"></div>'
-                for img in images_list if img and os.path.isfile(img) and _img_to_b64(img)
-            )
-            if imgs:
-                images_html = f'<div class="evidence-images">{imgs}</div>'
+            imgs_parts = []
+            for img in images_list:
+                if not (img and os.path.isfile(img)):
+                    continue
+                b64 = _img_to_b64(img, max_w=700)
+                if b64:
+                    imgs_parts.append(f'<div class="ev-img-wrap"><img src="{b64}" class="evidence-img"></div>')
+            if imgs_parts:
+                images_html = f'<div class="evidence-images">{"".join(imgs_parts)}</div>'
 
         raw_sections.append(f"""
         <div class="evidence-item" id="{ref_id}">
@@ -1517,9 +1928,23 @@ def answer(
     llm_base_url: str = None,
     llm_api_key: str = None,
     output_dir: str = None,
-    table_split_threshold: int = None
+    table_split_threshold: int = None,
+    search_mode: str = "auto",
+    category_filter: list[str] = None,
+    search_collections: list[str] = None,
 ) -> dict:
-    """端到端知识库问答：搜索 → LLM API 合成 → HTML 报告（MathJax 公式渲染）。"""
+    """
+    端到端知识库问答：搜索 → LLM API 合成 → HTML 报告（MathJax 公式渲染）。
+
+    参数:
+        search_mode:
+            "single"  — 单库搜索（路线1）
+            "multi"   — 跨库合并搜索（路线2）
+            "auto"    — 自动：如果 collection 是单库分类法（22大类/DDC/单库）用 single，
+                          如果是细分类（T类二级）用 multi
+        category_filter: 路线1 用，只返回指定 category 的结果
+        search_collections: 路线2 用，要搜索的集合列表（None=全部）
+    """
     output_dir = output_dir or OUTPUT_DIR
     llm_model = llm_model or LLM_MODEL
     llm_base_url = llm_base_url or LLM_BASE_URL
@@ -1531,12 +1956,32 @@ def answer(
             "error": "未配置 LLM API。请设置环境变量 KB_LLM_BASE_URL/KB_LLM_API_KEY 或传入 --llm-base-url/--llm-api-key。"
         }
 
+    # 自动判断搜索模式
+    if search_mode == "auto":
+        # 粗分类的集合名通常是 1-3 个字符（A, B, T, TH, DDC_000...）
+        # 细分类的集合名通常是 2-7 个字符且不含下划线（TH, TP, TN...）
+        # 简单启发：如果当前集合名长度 <= 3 或包含下划线，可能是粗分类 → single
+        if len(collection) <= 3 or "_" in collection:
+            search_mode = "single"
+        else:
+            search_mode = "multi"
+
     # 1. 搜索
-    sr = search(query, top_k=top_k, collection=collection, score_threshold=threshold, model=model)
+    if search_mode == "multi":
+        sr = search_multi(
+            query, collections=search_collections, top_k=top_k,
+            score_threshold=threshold, model=model
+        )
+        raw_chunks = sr.get("chunks", [])
+    else:
+        sr = search(query, top_k=top_k, collection=collection,
+                     score_threshold=threshold, model=model,
+                     category_filter=category_filter)
+        raw_chunks = sr.get("chunks", [])
+
     if not sr.get("ok"):
         return {"ok": False, "error": sr.get("error", "搜索失败")}
 
-    raw_chunks = sr.get("chunks", [])
     if not raw_chunks:
         return {"ok": True, "query": query, "synthesis": "知识库中未找到相关内容。", "chunks": [], "html": None}
 
@@ -1572,6 +2017,8 @@ def answer(
 # ═══════════════════════════════════════════
 
 if __name__ == "__main__":
+    # 修复 Windows GBK 环境下 print 非 ASCII 字符崩溃问题
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     parser = argparse.ArgumentParser(description="WorkBuddy 知识库引擎")
     parser.add_argument("query", nargs="*", help="搜索查询")
     parser.add_argument("--top", type=int, default=5, help="返回结果数")
@@ -1615,9 +2062,11 @@ if __name__ == "__main__":
             print("❌ 错误: ocr_workflow.py 未找到。请确保 ocr_workflow.py 在同一目录下。")
             sys.exit(1)
     elif args.ingest:
-        ingest_text(args.ingest, source=args.source or "", collection=args.collection, model=args.model)
+        result = ingest(file_path=args.ingest, metadata={"source": args.source or ""}, collection=args.collection, model=args.model)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.text and args.source:
-        ingest_text(None, file_path=None, text=args.text, source=args.source, collection=args.collection, model=args.model)
+        result = ingest(text=args.text, metadata={"source": args.source}, collection=args.collection, model=args.model)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
     elif query_str and args.answer:
         result = answer(
             query_str,
