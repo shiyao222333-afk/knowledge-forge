@@ -1,0 +1,94 @@
+{
+  "summary": {
+    "total": 12,
+    "pass": 12,
+    "fail": 0,
+    "skip": 0
+  },
+  "results": [
+    {
+      "phase": "3.1",
+      "name": "无参数运行",
+      "status": "PASS",
+      "detail": "正确显示帮助信息",
+      "time": "2026-06-14T15:03:00.568952"
+    },
+    {
+      "phase": "3.2",
+      "name": "高阈值无结果",
+      "status": "PASS",
+      "detail": "正确返回空结果",
+      "time": "2026-06-14T15:03:09.449995"
+    },
+    {
+      "phase": "3.3",
+      "name": "特殊字符: 希腊字母",
+      "status": "PASS",
+      "detail": "返回 5 条",
+      "time": "2026-06-14T15:03:18.445896"
+    },
+    {
+      "phase": "3.3",
+      "name": "特殊字符: 物理公式",
+      "status": "PASS",
+      "detail": "返回 3 条",
+      "time": "2026-06-14T15:03:27.462685"
+    },
+    {
+      "phase": "3.3",
+      "name": "特殊字符: 中英混合缩写",
+      "status": "PASS",
+      "detail": "返回 4 条",
+      "time": "2026-06-14T15:03:36.274265"
+    },
+    {
+      "phase": "3.4",
+      "name": "短文本摄入",
+      "status": "PASS",
+      "detail": "{\n\"ok\": true,\n\"chunks\": 1,\n\"collection\": \"test_zgpt_vector\",\n\"source\": \"short_text.txt\",",
+      "time": "2026-06-14T15:03:49.328257"
+    },
+    {
+      "phase": "3.5",
+      "name": "Markdown 摄入",
+      "status": "PASS",
+      "detail": "{\n\"ok\": true,\n\"chunks\": 4,\n\"collection\": \"test_zgpt_vector\",\n\"source\": \"AI_Research_Notes.md\",",
+      "time": "2026-06-14T15:04:02.584697"
+    },
+    {
+      "phase": "3.6",
+      "name": "分类法: single",
+      "status": "PASS",
+      "detail": "🗂️ 单库模式（不分类） — 1 个集合",
+      "time": "2026-06-14T15:04:02.586300"
+    },
+    {
+      "phase": "3.6",
+      "name": "分类法: clc_l1",
+      "status": "PASS",
+      "detail": "📚 中图法 22 大类（推荐跨学科） — 22 个集合",
+      "time": "2026-06-14T15:04:02.586386"
+    },
+    {
+      "phase": "3.6",
+      "name": "分类法: clc_t",
+      "status": "PASS",
+      "detail": "🔧 中图法 T 类二级（推荐工程师） — 16 个集合",
+      "time": "2026-06-14T15:04:02.586490"
+    },
+    {
+      "phase": "3.6",
+      "name": "分类法: ddc_10",
+      "status": "PASS",
+      "detail": "🌍 杜威十进制（推荐英文资料多） — 10 个集合",
+      "time": "2026-06-14T15:04:02.586552"
+    },
+    {
+      "phase": "3.7",
+      "name": "删除测试集合 test_zgpt_vector",
+      "status": "PASS",
+      "detail": "200 {\"result\":true,\"status\":\"ok\",\"time\":0.0071052}",
+      "time": "2026-06-14T15:04:04.939216"
+    }
+  ]
+}

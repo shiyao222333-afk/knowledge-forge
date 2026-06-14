@@ -1,86 +1,222 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-<rect x="0" y="0" width="512" height="512" rx="60" fill="#0a0e17"/>
-<circle cx="40" cy="40" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="40" cy="100" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="40" cy="160" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="40" cy="220" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="40" cy="280" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="40" cy="340" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="40" cy="400" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="40" cy="460" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="100" cy="40" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="100" cy="100" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="100" cy="160" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="100" cy="220" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="100" cy="280" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="100" cy="340" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="100" cy="400" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="100" cy="460" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="160" cy="40" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="160" cy="100" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="160" cy="160" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="160" cy="220" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="160" cy="280" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="160" cy="340" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="160" cy="400" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="160" cy="460" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="220" cy="40" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="220" cy="100" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="220" cy="160" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="220" cy="220" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="220" cy="280" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="220" cy="340" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="220" cy="400" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="220" cy="460" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="280" cy="40" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="280" cy="100" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="280" cy="160" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="280" cy="220" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="280" cy="280" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="280" cy="340" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="280" cy="400" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="280" cy="460" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="340" cy="40" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="340" cy="100" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="340" cy="160" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="340" cy="220" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="340" cy="280" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="340" cy="340" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="340" cy="400" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="340" cy="460" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="400" cy="40" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="400" cy="100" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="400" cy="160" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="400" cy="220" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="400" cy="280" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="400" cy="340" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="400" cy="400" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="400" cy="460" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="460" cy="40" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="460" cy="100" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="460" cy="160" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="460" cy="220" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="460" cy="280" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="460" cy="340" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="460" cy="400" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<circle cx="460" cy="460" r="1.5" fill="#4F8EF7" opacity="0.15"/>
-<rect x="247" y="320" width="18" height="100" rx="8" fill="#4F8EF7" opacity="0.8"/>
-<rect x="221" y="15" width="70" height="8" rx="4" fill="#00D4AA"/>
-<rect x="252" y="-5" width="8" height="40" rx="4" fill="#00D4AA"/>
-<path d="M 226 290 Q 248.5,205.0 247.49554455541713,208.75 Q 246.49108911083425,217.5 246.11524240553211,218.75 Q 245.73939570022995,230.0 246.0168407544427,228.75 Q 246.29428580865547,242.5 247.2400589068218,238.75 Q 248.18583200498813,255.0 249.80507775536802,248.75 Q 251.42432350574794,267.5 253.71216175287395,258.75 Q 256.0,280.0 258.28783824712605,261.25 Q 260.57567649425204,267.5 262.1949222446319,251.25 Q 263.81416799501187,255.0 264.7599410931782,241.25 Q 265.70571419134455,242.5 265.9831592455573,231.25 Q 266.2606042997701,230.0 265.88475759446794,221.25 Q 265.50891088916575,217.5 264.50445544458285,211.25 L 286 290 Z" fill="#FFB347" opacity="0.4"/>
-<path d="M 236 285 Q 250.5276777067893,230.0 250.41682935726692,230.0 Q 250.30598100774455,240.0 250.72191601653526,235.0 Q 251.13785102532594,250.0 252.0872778859528,240.0 Q 253.03670474657963,260.0 254.51835237328982,245.0 Q 256.0,270.0 257.4816476267102,250.0 Q 258.96329525342037,260.0 259.9127221140472,245.0 Q 260.862148974674,250.0 261.27808398346474,240.0 Q 261.69401899225545,240.0 261.5831706427331,235.0 L 276 285 Z" fill="#FF6B35" opacity="0.7"/>
-<ellipse cx="256" cy="250" rx="12" ry="35" fill="#FFFFFF" opacity="0.9"/>
-<ellipse cx="256" cy="250" rx="8" ry="25" fill="#FFF9C4" opacity="0.8"/>
-<ellipse cx="256" cy="270" rx="50" ry="60" fill="#FFB347" opacity="0.08"/>
-<path d="M 425,200 L 425.0,200.0 L 410.90962644125017,208.28220944328066 L 418.97114317029974,222.5 L 402.62741699796953,222.62741699796953 L 402.5,238.97114317029974 L 388.28220944328064,230.9096264412502 L 380.0,245.0 L 371.7177905567193,230.9096264412502 L 357.5,238.97114317029974 L 357.37258300203047,222.62741699796953 L 341.02885682970026,222.5 L 349.09037355874983,208.28220944328066 L 335.0,200.0 L 349.09037355874983,191.71779055671934 L 341.02885682970026,177.5 L 357.37258300203047,177.37258300203047 L 357.5,161.02885682970026 L 371.71779055671936,169.0903735587498 L 380.0,155.0 L 388.28220944328064,169.0903735587498 L 402.5,161.02885682970026 L 402.62741699796953,177.37258300203047 L 418.97114317029974,177.49999999999997 L 410.90962644125017,191.71779055671934 Z" fill="none" stroke="#00D4AA" stroke-width="2.5" opacity="0.6"/>
-<circle cx="380" cy="200" r="24" fill="none" stroke="#00D4AA" stroke-width="1.5" opacity="0.4"/>
-<circle cx="380" cy="200" r="6" fill="#00D4AA" opacity="0.7"/>
-<rect x="110" y="210" width="8" height="55" rx="2" fill="#4F8EF7" opacity="0.6"/>
-<path d="M 118 215 L 165 212 L 165 258 L 118 260 Z" fill="#00D4AA" opacity="0.3" stroke="#00D4AA" stroke-width="1"/>
-<line x1="125" y1="225" x2="155" y2="225" stroke="#0a0e17" stroke-width="2" opacity="0.8"/>
-<line x1="125" y1="235" x2="158" y2="235" stroke="#0a0e17" stroke-width="2" opacity="0.8"/>
-<line x1="125" y1="245" x2="161" y2="245" stroke="#0a0e17" stroke-width="2" opacity="0.8"/>
-<text x="256" y="430" font-family="Arial,sans-serif" font-size="38" font-weight="bold" fill="#E8EAED" text-anchor="middle" letter-spacing="2">KnowledgeForge</text>
-<text x="256" y="465" font-family="SimHei,Arial,sans-serif" font-size="28" font-weight="bold" fill="#FF6B35" text-anchor="middle">知炬</text>
-<text x="256" y="490" font-family="Arial,sans-serif" font-size="14" fill="#4F8EF7" text-anchor="middle" opacity="0.7">Local Knowledge Engine</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <!-- 背景渐变 -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#0d0d1a"/>
+    </radialGradient>
+    <!-- 主色渐变 - 青蓝 -->
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#0066ff"/>
+    </linearGradient>
+    <!-- 暖色渐变 - 橙金 -->
+    <linearGradient id="warmGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff6b35"/>
+      <stop offset="100%" stop-color="#ffb800"/>
+    </linearGradient>
+    <!-- 书页渐变 -->
+    <linearGradient id="pageGrad" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#e8f4fd"/>
+      <stop offset="100%" stop-color="#b8dff5"/>
+    </linearGradient>
+    <!-- 发光滤镜 -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feFlood flood-color="#00d4ff" flood-opacity="0.3"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="fireGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feFlood flood-color="#ff6b35" flood-opacity="0.35"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+    <clipPath id="circleClip">
+      <circle cx="256" cy="256" r="224"/>
+    </clipPath>
+  </defs>
+
+  <!-- 圆角方形背景 -->
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#bgGrad)" stroke="#00d4ff" stroke-width="1.5" stroke-opacity="0.15"/>
+
+  <!-- 背景网格图案 -->
+  <g opacity="0.04" clip-path="circleClip">
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="16" cy="16" r="1" fill="#00d4ff"/>
+    </pattern>
+    <rect x="32" y="32" width="448" height="448" fill="url(#grid)"/>
+  </g>
+
+  <g transform="translate(256, 256)">
+
+    <!-- === 外圈轨道环 === -->
+    <circle cx="0" cy="0" r="180" fill="none" stroke="url(#cyanGrad)" stroke-width="1" stroke-opacity="0.12" stroke-dasharray="6 18"/>
+    <circle cx="0" cy="0" r="195" fill="none" stroke="#00d4ff" stroke-width="0.5" stroke-opacity="0.06"/>
+
+    <!-- === 底部火焰 === -->
+    <g transform="translate(0, 115)" filter="url(#fireGlow)">
+      <!-- 左侧火焰 -->
+      <path d="M-55,10 Q-45,-30 -30,-5 Q-25,-25 -18,-2 Q-12,-20 -5,2" fill="url(#warmGrad)" opacity="0.85"/>
+      <path d="M-40,10 Q-35,-15 -25,0 Q-20,-12 -15,3" fill="#ffb800" opacity="0.9"/>
+      <!-- 中间主火焰 -->
+      <path d="M-35,15 Q-30,-50 -10,-10 Q-5,-55 0,-15 Q5,-55 10,-10 Q30,-50 35,15 Z" fill="url(#warmGrad)" opacity="0.75"/>
+      <path d="M-20,15 Q-15,-30 -5,-5 Q0,-35 5,-5 Q15,-30 20,15 Z" fill="#ffb800" opacity="0.88"/>
+      <path d="M-8,15 Q-4,-20 0,-2 Q4,-20 8,15 Z" fill="#ffe0b0" opacity="0.95"/>
+      <!-- 右侧火焰 -->
+      <path d="M50,10 Q45,-28 33,-3 Q28,-22 21,-0 Q15,-18 8,2" fill="url(#warmGrad)" opacity="0.85"/>
+      <path d="M35,10 Q32,-12 25,1 Q22,-10 18,3" fill="#ffb800" opacity="0.9"/>
+    </g>
+
+    <!-- === 铁砧主体 === -->
+    <g filter="url(#shadow)">
+      <!-- 铁砧底部基座 -->
+      <path d="M-80,90 L-70,65 L70,65 L80,90 Z" fill="#2c3e6b" stroke="#3d5a8f" stroke-width="1.5"/>
+      <rect x="-75" y="82" width="150" height="12" rx="2" fill="#1a2844"/>
+
+      <!-- 铁砧中段 -->
+      <path d="M-60,65 L-50,35 L50,35 L60,65 Z" fill="#334b80" stroke="#4a6dad" stroke-width="1"/>
+      <line x1="-45" y1="55" x2="45" y2="55" stroke="#4a6dad" stroke-width="0.8" opacity="0.5"/>
+
+      <!-- 铁砧顶部台面 -->
+      <rect x="-70" y="22" width="140" height="14" rx="4" fill="#3d5a9a" stroke="#5a7fd4" stroke-width="1.5"/>
+      <rect x="-70" y="22" width="140" height="5" rx="3" fill="#5a7fd4" opacity="0.3"/>
+    </g>
+
+    <!-- === 打开的书本 === -->
+    <g transform="translate(0, -40)" filter="url(#glow)">
+      <!-- 左书页 -->
+      <g transform="skewY(6)">
+        <rect x="-85" y="-52" width="80" height="100" rx="6" fill="url(#pageGrad)" stroke="#00d4ff" stroke-width="1.5" stroke-opacity="0.4"/>
+        <!-- 文字线条 -->
+        <line x1="-75" y1="-36" x2="-20" y2="-36" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+        <line x1="-75" y1="-24" x2="-20" y2="-24" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+        <line x1="-75" y1="-12" x2="-40" y2="-12" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+        <line x1="-75" y1="0" x2="-20" y2="0" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+        <line x1="-75" y1="12" x2="-20" y2="12" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+        <line x1="-75" y1="24" x2="-45" y2="24" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+      </g>
+
+      <!-- 右书页 -->
+      <g transform="skewY(-6)">
+        <rect x="5" y="-52" width="80" height="100" rx="6" fill="url(#pageGrad)" stroke="#00d4ff" stroke-width="1.5" stroke-opacity="0.4"/>
+        <!-- 文字线条 -->
+        <line x1="15" y1="-36" x2="70" y2="-36" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+        <line x1="15" y1="-24" x2="70" y2="-24" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+        <line x1="30" y1="-12" x2="70" y2="-12" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+        <line x1="15" y1="0" x2="70" y2="0" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+        <line x1="15" y1="12" x2="70" y2="12" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+        <line x1="25" y1="24" x2="70" y2="24" stroke="#a0c8e0" stroke-width="1.5" opacity="0.5"/>
+      </g>
+
+      <!-- 书脊 -->
+      <line x1="0" y1="-48" x2="0" y2="48" stroke="#00d4ff" stroke-width="2" opacity="0.6"/>
+    </g>
+
+    <!-- === 锤子 === -->
+    <g transform="translate(55, -38) rotate(32)" filter="url(#shadow)">
+      <!-- 锤柄 -->
+      <rect x="-5" y="-1" width="10" height="70" rx="3" fill="#5a3a1a" stroke="#8a6040" stroke-width="0.8"/>
+      <rect x="-3" y="15" width="6" height="40" rx="2" fill="#6b4530" opacity="0.5"/>
+      <!-- 锤头 -->
+      <rect x="-22" y="-18" width="44" height="20" rx="3" fill="#8a8a9a" stroke="#b0b0c0" stroke-width="1"/>
+      <rect x="-22" y="-18" width="44" height="6" rx="2" fill="#a0a0b0" opacity="0.4"/>
+      <rect x="-12" y="-18" width="24" height="20" rx="2" fill="#707080" opacity="0.3"/>
+    </g>
+
+    <!-- === 齿轮符号 === -->
+    <g transform="translate(-120, -60)" filter="url(#glow)">
+      <circle cx="0" cy="0" r="18" fill="none" stroke="url(#cyanGrad)" stroke-width="2" opacity="0.7"/>
+      <circle cx="0" cy="0" r="8" fill="none" stroke="#00d4ff" stroke-width="1.5" opacity="0.5"/>
+      <!-- 轮齿 -->
+      <g stroke="#00d4ff" stroke-width="2.5" stroke-linecap="round" opacity="0.7">
+        <line x1="0" y1="-20" x2="0" y2="-26"/>
+        <line x1="14.1" y1="-14.1" x2="18.4" y2="-18.4"/>
+        <line x1="20" y1="0" x2="26" y2="0"/>
+        <line x1="14.1" y1="14.1" x2="18.4" y2="18.4"/>
+        <line x1="0" y1="20" x2="0" y2="26"/>
+        <line x1="-14.1" y1="14.1" x2="-18.4" y2="18.4"/>
+        <line x1="-20" y1="0" x2="-26" y2="0"/>
+        <line x1="-14.1" y1="-14.1" x2="-18.4" y2="-18.4"/>
+      </g>
+    </g>
+
+    <!-- === 数据节点 === -->
+    <g transform="translate(120, -70)" filter="url(#glow)">
+      <circle cx="0" cy="0" r="5" fill="#00d4ff" opacity="0.9"/>
+      <circle cx="0" cy="0" r="10" fill="none" stroke="#00d4ff" stroke-width="1" opacity="0.4"/>
+      <circle cx="0" cy="0" r="16" fill="none" stroke="#0066ff" stroke-width="0.8" opacity="0.2"/>
+      <!-- 连线 -->
+      <line x1="0" y1="5" x2="0" y2="18" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+      <circle cx="0" cy="20" r="2.5" fill="#00d4ff" opacity="0.7"/>
+      <line x1="0" y1="22.5" x2="0" y2="32" stroke="#0066ff" stroke-width="1" stroke-linecap="round" opacity="0.4"/>
+      <circle cx="0" cy="34" r="2" fill="#0066ff" opacity="0.5"/>
+    </g>
+
+    <!-- === 知识节点（神经元连接） === -->
+    <g transform="translate(-110, 50)" opacity="0.5">
+      <circle cx="0" cy="0" r="4" fill="#00d4ff" opacity="0.6"/>
+      <circle cx="0" cy="0" r="8" fill="none" stroke="#00d4ff" stroke-width="0.8" opacity="0.3"/>
+      <line x1="4" y1="0" x2="18" y2="-10" stroke="#00d4ff" stroke-width="1" opacity="0.4"/>
+      <line x1="4" y1="0" x2="22" y2="8" stroke="#0066ff" stroke-width="1" opacity="0.3"/>
+      <circle cx="20" cy="-12" r="3" fill="#00d4ff" opacity="0.5"/>
+      <circle cx="24" cy="10" r="2.5" fill="#0066ff" opacity="0.4"/>
+    </g>
+
+    <!-- === 火花粒子 === -->
+    <g opacity="0.7">
+      <circle cx="-48" cy="140" r="2" fill="#ffb800">
+        <animate attributeName="cy" values="140;120;100;80" dur="1.5s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.7;0.4;0" dur="1.5s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="-10" cy="145" r="1.5" fill="#ffd700">
+        <animate attributeName="cy" values="145;125;105" dur="1.2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.8;0.3;0" dur="1.2s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="30" cy="142" r="2" fill="#ff6b35">
+        <animate attributeName="cy" values="142;115;90" dur="1.8s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.6;0.3;0" dur="1.8s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="55" cy="138" r="1.5" fill="#ffb800">
+        <animate attributeName="cy" values="138;110;85" dur="1.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.7;0.2;0" dur="1.4s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+
+    <!-- === 齿轮缓慢旋转 === -->
+    <g transform="translate(-120, -60)">
+      <animateTransform attributeName="transform" type="rotate" from="0 -120 -60" to="360 -120 -60" dur="12s" repeatCount="indefinite" additive="replace"/>
+      <circle cx="0" cy="0" r="18" fill="none" stroke="url(#cyanGrad)" stroke-width="2" opacity="0.7"/>
+      <circle cx="0" cy="0" r="8" fill="none" stroke="#00d4ff" stroke-width="1.5" opacity="0.5"/>
+      <g stroke="#00d4ff" stroke-width="2.5" stroke-linecap="round" opacity="0.7">
+        <line x1="0" y1="-20" x2="0" y2="-26"/>
+        <line x1="14.1" y1="-14.1" x2="18.4" y2="-18.4"/>
+        <line x1="20" y1="0" x2="26" y2="0"/>
+        <line x1="14.1" y1="14.1" x2="18.4" y2="18.4"/>
+        <line x1="0" y1="20" x2="0" y2="26"/>
+        <line x1="-14.1" y1="14.1" x2="-18.4" y2="18.4"/>
+        <line x1="-20" y1="0" x2="-26" y2="0"/>
+        <line x1="-14.1" y1="-14.1" x2="-18.4" y2="-18.4"/>
+      </g>
+    </g>
+
+    <!-- === 脉冲光环 === -->
+    <circle cx="0" cy="0" r="130" fill="none" stroke="#00d4ff" stroke-width="1.5" opacity="0.15">
+      <animate attributeName="r" values="130;160;190" dur="3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.15;0.05;0" dur="3s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- === 中心发光点 === -->
+    <circle cx="0" cy="0" r="3" fill="#00d4ff" opacity="0.6">
+      <animate attributeName="r" values="3;5;3" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0.3;0.6" dur="2s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- 底部装饰线 -->
+  <line x1="80" y1="460" x2="432" y2="460" stroke="url(#cyanGrad)" stroke-width="0.5" opacity="0.15"/>
 </svg>

@@ -1,0 +1,67 @@
+边界测试文档 - Edge Cases Test
+==============================
+
+1. 特殊字符测试
+
+Unicode 符号: α β γ δ ε ζ η θ λ μ ν ξ π ρ σ τ υ φ χ ψ ω
+数学符号: ∑ ∏ ∫ ∂ ∇ ∆ ∞ ≈ ≠ ≤ ≥ ± × ÷ √
+中文标点: 「」『』【】《》——……、。！？：；""
+
+2. 公式测试
+
+行内公式: E = mc², F = ma, P = F/A
+块级公式:
+  σ = F / A
+  τ = T × r / J
+  安全系数 n = σ_s / σ_max ≥ [n]
+
+KaTeX 公式（应被自动识别并渲染）:
+  $$E = mc^2$$
+  $$F = G\frac{m_1 m_2}{r^2}$$
+  $$\int_{0}^{\infty} e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$$
+
+3. 长文本测试（重复内容）
+
+这段内容是重复的测试文本。这段内容是重复的测试文本。这段内容是重复的测试文本。
+这段内容是重复的测试文本。这段内容是重复的测试文本。这段内容是重复的测试文本。
+这段内容是重复的测试文本。这段内容是重复的测试文本。这段内容是重复的测试文本。
+这段内容是重复的测试文本。这段内容是重复的测试文本。这段内容是重复的测试文本。
+这段内容是重复的测试文本。这段内容是重复的测试文本。这段内容是重复的测试文本。
+
+4. 多级嵌套列表
+
+第一层
+  第二层 - 项目A
+    第三层 - 子项目 1
+    第三层 - 子项目 2
+      第四层 - 细节 a
+      第四层 - 细节 b
+  第二层 - 项目B
+第一层继续
+
+5. 代码块混合
+
+Python 代码示例:
+  def quick_sort(arr):
+      if len(arr) <= 1:
+          return arr
+      pivot = arr[0]
+      left = [x for x in arr[1:] if x <= pivot]
+      right = [x for x in arr[1:] if x > pivot]
+      return quick_sort(left) + [pivot] + quick_sort(right)
+
+SQL 查询示例:
+  SELECT u.name, COUNT(o.id) as order_count
+  FROM users u
+  LEFT JOIN orders o ON u.id = o.user_id
+  GROUP BY u.id
+  HAVING COUNT(o.id) > 5
+  ORDER BY order_count DESC;
+
+6. 空行和纯空格行测试
+
+
+
+（上面有空行）
+   （前面有空格）
+	（前面有Tab）

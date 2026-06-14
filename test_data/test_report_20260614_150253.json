@@ -1,0 +1,94 @@
+{
+  "summary": {
+    "total": 12,
+    "pass": 11,
+    "fail": 0,
+    "skip": 1
+  },
+  "results": [
+    {
+      "phase": "2.1",
+      "name": "--help 输出",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T15:01:45.254221"
+    },
+    {
+      "phase": "2.2",
+      "name": "摄入: 齿轮设计基础.txt",
+      "status": "PASS",
+      "detail": "{\n\"ok\": false,\n\"error\": \"内容重复，已跳过（使用 --no-dedup 强制入库）\",\n\"duplicate_of\": \"机械-手册\",\n\"content_hash\": \"6bfd7800aa29dcde\"",
+      "time": "2026-06-14T15:01:51.725975"
+    },
+    {
+      "phase": "2.2",
+      "name": "摄入: 产品运营笔记.txt",
+      "status": "PASS",
+      "detail": "{\n\"ok\": false,\n\"error\": \"内容重复，已跳过（使用 --no-dedup 强制入库）\",\n\"duplicate_of\": \"产品-运营\",\n\"content_hash\": \"dbc3da26581f15fe\"",
+      "time": "2026-06-14T15:01:58.198366"
+    },
+    {
+      "phase": "2.2",
+      "name": "摄入: edge_cases.txt",
+      "status": "PASS",
+      "detail": "{\n\"ok\": false,\n\"error\": \"内容重复，已跳过（使用 --no-dedup 强制入库）\",\n\"duplicate_of\": \"测试-边界\",\n\"content_hash\": \"b8b23759ba6b3f18\"",
+      "time": "2026-06-14T15:02:04.691790"
+    },
+    {
+      "phase": "2.3",
+      "name": "--text 摄入",
+      "status": "PASS",
+      "detail": "{\n\"ok\": false,\n\"error\": \"内容重复，已跳过（使用 --no-dedup 强制入库）\",\n\"duplicate_of\": \"测试-纯文本\",\n\"content_hash\": \"0cfdb1d7c6cf09d8\"",
+      "time": "2026-06-14T15:02:11.200878"
+    },
+    {
+      "phase": "2.4",
+      "name": "搜索: 中文技术搜索 (齿轮失效)",
+      "status": "PASS",
+      "detail": "返回 3 条结果 (阈值 0.1)",
+      "time": "2026-06-14T15:02:20.072309"
+    },
+    {
+      "phase": "2.4",
+      "name": "搜索: 中文运营搜索 (智能家居)",
+      "status": "PASS",
+      "detail": "返回 3 条结果 (阈值 0.1)",
+      "time": "2026-06-14T15:02:29.066050"
+    },
+    {
+      "phase": "2.4",
+      "name": "搜索: 英文技术搜索 (Transformer attention)",
+      "status": "PASS",
+      "detail": "返回 3 条结果 (阈值 0.1)",
+      "time": "2026-06-14T15:02:38.075523"
+    },
+    {
+      "phase": "2.4",
+      "name": "搜索: 短文本搜索 (RAG检索增强)",
+      "status": "PASS",
+      "detail": "返回 3 条结果 (阈值 0.1)",
+      "time": "2026-06-14T15:02:47.095864"
+    },
+    {
+      "phase": "2.5",
+      "name": "去重检测",
+      "status": "PASS",
+      "detail": "正确识别重复内容",
+      "time": "2026-06-14T15:02:53.623980"
+    },
+    {
+      "phase": "2.6",
+      "name": "LLM 问答",
+      "status": "SKIP",
+      "detail": "未配置 KB_LLM_API_KEY",
+      "time": "2026-06-14T15:02:53.624275"
+    },
+    {
+      "phase": "2.7",
+      "name": "HTML 报告",
+      "status": "PASS",
+      "detail": "最新报告: report_20260614_015618.html (共 21 个)",
+      "time": "2026-06-14T15:02:53.624753"
+    }
+  ]
+}

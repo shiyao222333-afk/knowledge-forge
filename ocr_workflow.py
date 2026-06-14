@@ -14,12 +14,9 @@ try:
     from kb_query import (
         _ocr_paddle, _ocr_tesseract, _ocr_structured,
         _check_ocr_quality, ingest,
-        print as kb_print
     )
 except ImportError:
-    # 如果作为独立模块运行
-    import requests
-    import re
+    pass  # 独立运行时无法导入 kb_query
 
 
 def do_ocr(

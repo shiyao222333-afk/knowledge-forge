@@ -1,0 +1,122 @@
+{
+  "summary": {
+    "total": 16,
+    "pass": 12,
+    "fail": 0,
+    "skip": 4
+  },
+  "results": [
+    {
+      "phase": "1.1",
+      "name": "语法检查: kb_query.py",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T15:18:24.748687"
+    },
+    {
+      "phase": "1.1",
+      "name": "语法检查: app.py",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T15:18:24.843906"
+    },
+    {
+      "phase": "1.1",
+      "name": "语法检查: ocr_workflow.py",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T15:18:24.936345"
+    },
+    {
+      "phase": "1.1",
+      "name": "语法检查: ocr_llm_optimize.py",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T15:18:25.033379"
+    },
+    {
+      "phase": "1.1",
+      "name": "语法检查: sync_ima.py",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T15:18:25.132018"
+    },
+    {
+      "phase": "1.1",
+      "name": "语法检查: utils/flame_bg.py",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T15:18:25.226173"
+    },
+    {
+      "phase": "1.1",
+      "name": "语法检查: config/classifications.py",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T15:18:25.318387"
+    },
+    {
+      "phase": "1.2",
+      "name": "Qdrant 连接",
+      "status": "PASS",
+      "detail": "版本: 1.18.2",
+      "time": "2026-06-14T15:18:27.528471"
+    },
+    {
+      "phase": "1.3",
+      "name": "Ollama 连接",
+      "status": "PASS",
+      "detail": "模型数: 5",
+      "time": "2026-06-14T15:18:29.535308"
+    },
+    {
+      "phase": "1.3",
+      "name": "Embedding 模型",
+      "status": "PASS",
+      "detail": "qwen3-embedding:4b 可用",
+      "time": "2026-06-14T15:18:29.535359"
+    },
+    {
+      "phase": "1.4",
+      "name": "kb_query 导入",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T15:18:29.803914"
+    },
+    {
+      "phase": "1.4",
+      "name": "config.classifications 导入",
+      "status": "PASS",
+      "detail": "4 个分类法",
+      "time": "2026-06-14T15:18:29.863126"
+    },
+    {
+      "phase": "1.5",
+      "name": "KB_TESSERACT_PATH",
+      "status": "SKIP",
+      "detail": "未设置（将使用默认值）",
+      "time": "2026-06-14T15:18:29.863258"
+    },
+    {
+      "phase": "1.5",
+      "name": "KB_TESSDATA_PREFIX",
+      "status": "SKIP",
+      "detail": "未设置（将使用默认值）",
+      "time": "2026-06-14T15:18:29.863316"
+    },
+    {
+      "phase": "1.5",
+      "name": "KB_NODE_BIN",
+      "status": "SKIP",
+      "detail": "未设置（将使用默认值）",
+      "time": "2026-06-14T15:18:29.863365"
+    },
+    {
+      "phase": "1.5",
+      "name": "KB_NPM_ROOT",
+      "status": "SKIP",
+      "detail": "未设置（将使用默认值）",
+      "time": "2026-06-14T15:18:29.863413"
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "summary": {
+    "total": 12,
+    "pass": 7,
+    "fail": 4,
+    "skip": 1
+  },
+  "results": [
+    {
+      "phase": "2.1",
+      "name": "--help 输出",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T14:59:18.866177"
+    },
+    {
+      "phase": "2.2",
+      "name": "摄入: 齿轮设计基础.txt",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T14:59:37.680517"
+    },
+    {
+      "phase": "2.2",
+      "name": "摄入: 产品运营笔记.txt",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T14:59:51.157285"
+    },
+    {
+      "phase": "2.2",
+      "name": "摄入: edge_cases.txt",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T15:00:04.389618"
+    },
+    {
+      "phase": "2.3",
+      "name": "--text 摄入",
+      "status": "PASS",
+      "detail": "",
+      "time": "2026-06-14T15:00:17.376650"
+    },
+    {
+      "phase": "2.4",
+      "name": "搜索: 中文技术搜索 (齿轮失效)",
+      "status": "PASS",
+      "detail": "返回 3 条结果 (阈值 0.1)",
+      "time": "2026-06-14T15:00:26.312692"
+    },
+    {
+      "phase": "2.4",
+      "name": "搜索: 中文运营搜索 (智能家居)",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\knowledge-forge\\kb_query.py\", line 2088, in <module>\n    print(json.dumps(result, ensure_ascii=False, indent=2))\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nUnicodeEncodeError: 'gbk' codec can't encode character '\\u2202' in position 1813:",
+      "time": "2026-06-14T15:00:35.343544"
+    },
+    {
+      "phase": "2.4",
+      "name": "搜索: 英文技术搜索 (Transformer attention)",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\knowledge-forge\\kb_query.py\", line 2088, in <module>\n    print(json.dumps(result, ensure_ascii=False, indent=2))\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nUnicodeEncodeError: 'gbk' codec can't encode character '\\u2202' in position 524: ",
+      "time": "2026-06-14T15:00:44.340704"
+    },
+    {
+      "phase": "2.4",
+      "name": "搜索: 短文本搜索 (RAG检索增强)",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\knowledge-forge\\kb_query.py\", line 2088, in <module>\n    print(json.dumps(result, ensure_ascii=False, indent=2))\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nUnicodeEncodeError: 'gbk' codec can't encode character '\\u2202' in position 511: ",
+      "time": "2026-06-14T15:00:53.313027"
+    },
+    {
+      "phase": "2.5",
+      "name": "去重检测",
+      "status": "FAIL",
+      "detail": "未检测到重复内容",
+      "time": "2026-06-14T15:00:59.844740"
+    },
+    {
+      "phase": "2.6",
+      "name": "LLM 问答",
+      "status": "SKIP",
+      "detail": "未配置 KB_LLM_API_KEY",
+      "time": "2026-06-14T15:00:59.845004"
+    },
+    {
+      "phase": "2.7",
+      "name": "HTML 报告",
+      "status": "PASS",
+      "detail": "最新报告: report_20260614_015618.html (共 21 个)",
+      "time": "2026-06-14T15:00:59.845617"
+    }
+  ]
+}

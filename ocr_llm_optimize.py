@@ -9,6 +9,7 @@ OCR识别后，用LLM分析和优化识别结果：
 
 import json
 import re
+import requests
 from typing import Optional
 
 
@@ -83,8 +84,6 @@ def _llm_optimize_ocr(
 """
 
     try:
-        import requests
-        
         headers = {
             "Authorization": f"Bearer {llm_api_key}",
             "Content-Type": "application/json",
