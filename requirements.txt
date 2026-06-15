@@ -1,4 +1,14 @@
 streamlit>=1.35.0
 requests>=2.31.0
-# kb_query.py 的依赖（已有）
+
+# kb_query.py 依赖
 # requests, fpdf2, pillow, paddlepaddle, paddleocr
+
+# v0.4.5 新增: 多格式文件处理
+chardet>=5.0.0
+beautifulsoup4>=4.12.0
+pypdf>=5.0.0
+python-docx>=1.1.0
+python-pptx>=1.0.0
+ebooklib>=0.18
+lxml>=5.0.0
