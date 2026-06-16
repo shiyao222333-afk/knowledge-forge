@@ -224,6 +224,48 @@ python run.py
 | 简单桌面应用，快速聊天，零配置 | AnythingLLM |
 | 快速搭建知识库问答系统，开箱即用 | FastGPT |
 
+### ⚖️ 各有千秋：竞品的优势与我们该学的
+
+以上对比聚焦了 Athanor 的差异化能力，但坦诚地说，竞品在以下方面比我们强得多：
+
+**RAGFlow 比我们强在哪：**
+- **知识图谱**：在 RAG 中引入实体间关系图谱，实现多跳推理和复杂查询——这是 Athanor 完全不支持的
+- **Agent 融合**：将 RAG 检索与 AI Agent 深度集成，支持自动工具调用和多轮决策——Athanor 暂无 Agent 能力
+- **企业级成熟度**：多租户架构、权限管理、生产级部署经验——Athanor 定位个人使用，暂无这些
+- **解析器矩阵**：7 种解析器自由切换（DeepDoc / MinerU / Docling / PaddleOCR / 纯文本 / Vision LLM / TCADP）——Athanor 仅有一套管线
+
+**Dify 比我们强在哪：**
+- **全链路平台**：Dify 不只是知识库，而是完整的 AI 应用开发平台——Prompt 工程 → 工作流编排 → 向量检索 → 模型管理 → 运维监控 → 数据分析，一条龙
+- **可视化工作流**：拖拽式编排 LLM 节点、知识检索节点、代码执行节点、条件分支——Athanor 没有可视化编排
+- **插件市场**：丰富的第三方插件生态，可扩展性强——Athanor 无此能力
+- **团队协作**：多角色权限、共享工作区、版本管理——Athanor 是单用户工具
+- **运维监控**：内置日志、调用追踪、成本统计、性能仪表盘——Athanor 无运维面板
+- **社区与生态**：60k Stars、完善的文档和教程、活跃的社区——我们还在起步
+
+**FastGPT 比我们强在哪：**
+- **QA 自动生成模式**：用 LLM 将原始文档自动拆分为问答对再向量化——这是 Athanor 没有的独特摄入方式，对某些场景（如 FAQ 机器人）效果显著优于直接分块
+- **可视化工作流**：AI 应用构建器可编排复杂多步骤流程——Athanor 无此能力
+- **开箱即用体验**：50 万+用户的验证——Athanor 还在迭代
+
+**AnythingLLM 比我们强在哪：**
+- **桌面应用**：Electron 打包的一键安装桌面端，对非技术用户极其友好
+- **多模型切换**：内置几十种 LLM / Embedding / 向量库的即插即用集成
+
+### 🎯 我们的定位取舍
+
+Athanor 并不打算成为另一个 RAGFlow 或 Dify。我们的选择是：
+
+| 我们不做 | 我们在做 |
+|----------|---------|
+| 企业级多租户 / 团队协作 | 个人知识引擎 |
+| 通用 AI 应用开发平台 | **深度理解**：OCR→纠错→分类→索引的全链路 |
+| 可视化工作流编排 | **结构化认知**：分面分类 + 认知验证层级 |
+| 插件市场 / Agent 框架 | **精确溯源**：表格行级引用 + 连续编号 |
+| 桌面应用 / 多端适配 | **轻量部署**：pip install 一条命令 |
+| 知识图谱 + 多跳推理 | **远期规划**：v1.0+ 引入关系图可视化 |
+
+> 💡 如果你需要企业级 RAG 平台或通用 AI 应用构建器，RAGFlow / Dify 是更成熟的选择。如果你需要个人知识深度理解和管理，且愿意和项目一起成长——Athanor 的方向可能更对路。
+
 ---
 
 ## 🔄 操作流程
@@ -632,6 +674,48 @@ No competitor distinguishes "this is a math theorem (evergreen/corroborated)" fr
 | Enterprise RAG engine, team collaboration, full admin Web UI | RAGFlow / Dify |
 | Simple desktop app, quick chat, zero config | AnythingLLM |
 | Quick KB Q&A setup, out of the box | FastGPT |
+
+### ⚖️ Strengths & Trade-offs: Where Competitors Excel (And What We Should Learn)
+
+The above comparison highlights Athanor's differentiators. But to be honest, competitors beat us handily in these areas:
+
+**Where RAGFlow beats us:**
+- **Knowledge Graph**: Entity relationship graphs enabling multi-hop reasoning and complex queries — completely absent in Athanor
+- **Agent Integration**: Deep RAG + AI Agent fusion with tool calling and multi-turn decision-making — Athanor has no Agent capabilities
+- **Enterprise Maturity**: Multi-tenant architecture, RBAC, production battle-testing — Athanor is single-user by design
+- **Parser Matrix**: 7 interchangeable parsers (DeepDoc / MinerU / Docling / PaddleOCR / Plain Text / Vision LLM / TCADP) — Athanor has a single pipeline
+
+**Where Dify beats us:**
+- **Full-Stack Platform**: Dify is not just a KB tool — it's a complete AI app dev platform: Prompt engineering → workflow orchestration → vector search → model management → monitoring → analytics, all in one
+- **Visual Workflow**: Drag-and-drop node composition (LLM nodes, KB search nodes, code execution, conditionals) — Athanor has no visual orchestration
+- **Plugin Marketplace**: Rich third-party plugin ecosystem — Athanor has none
+- **Team Collaboration**: Multi-role permissions, shared workspaces, version control — Athanor is single-user
+- **Observability**: Built-in logging, call tracing, cost tracking, performance dashboards — Athanor has no ops panel
+- **Community & Ecosystem**: 60k Stars, extensive docs and tutorials, active community — we're just starting
+
+**Where FastGPT beats us:**
+- **QA Auto-Generation Mode**: LLM automatically splits documents into Q&A pairs before vectorization — a unique ingestion approach Athanor doesn't have, dramatically better for FAQ-style bots than direct chunking
+- **Visual Workflow**: AI app builder for complex multi-step flows — Athanor doesn't have this
+- **Battle-Tested UX**: 500K+ users have validated the experience — Athanor is still iterating
+
+**Where AnythingLLM beats us:**
+- **Desktop App**: Electron-packaged one-click install — extremely friendly for non-technical users
+- **Multi-Model Support**: Dozens of LLM / Embedding / Vector DB integrations out of the box
+
+### 🎯 Our Deliberate Trade-offs
+
+Athanor is not trying to be another RAGFlow or Dify. Here's what we're choosing:
+
+| We DON'T do | We DO |
+|-------------|-------|
+| Enterprise multi-tenant / team collaboration | Personal knowledge engine |
+| General AI app development platform | **Deep understanding**: OCR→correction→classification→indexing, end-to-end |
+| Visual workflow orchestration | **Structured cognition**: Faceted classification + epistemic verification |
+| Plugin marketplace / Agent frameworks | **Precise provenance**: Row-level table citations + consecutive numbering |
+| Desktop app / multi-platform | **Lightweight deployment**: single `pip install` |
+| Knowledge graph + multi-hop reasoning | **Future roadmap**: v1.0+ will explore relation graph visualization |
+
+> 💡 If you need an enterprise RAG platform or a general-purpose AI app builder, RAGFlow / Dify are more mature choices. If you need deep personal knowledge understanding and are willing to grow with the project — Athanor's direction may be a better fit.
 
 ---
 
