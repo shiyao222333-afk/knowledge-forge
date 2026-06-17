@@ -43,7 +43,7 @@ import uuid
 from datetime import datetime, timezone
 import tempfile
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 try:
     from fpdf import FPDF
@@ -74,7 +74,7 @@ os.environ.setdefault("TESSDATA_PREFIX", os.environ.get("KB_TESSDATA_PREFIX") or
 _paddle_ocr = None
 
 OLLAMA_URL = "http://localhost:11434"
-QDRANT_URL = "http://localhost:6333"
+QDRANT_URL = os.environ.get("KB_QDRANT_URL", "http://127.0.0.1:6333")
 EMBED_MODEL = os.environ.get("KB_EMBED_MODEL", "qwen3-embedding:4b")   # 主力：qwen3-embedding 2560维 40K上下文
 EMBED_DIM = 2560                       # qwen3-embedding:4b 输出维度
 DEFAULT_COLLECTION = "athanor_v1"   # 2560维 Qdrant 集合（分面分类单集合方案）
@@ -454,6 +454,63 @@ def _check_ocr_quality(ocr_result: dict, image_path: str = None) -> dict:
                        else "图片可能模糊或非中文文档，建议重新拍摄"
     }
 
+def ocr_image(image_path: str) -> dict:
+    """
+    公共 OCR 入口：自动选择最优引擎识别图片文字。
+
+    优先使用 PPStructureV3（结构化识别：文字+表格+公式），
+    回退到 PaddleOCR（基础文字识别）。
+
+    返回:
+        {
+            "ok": true,
+            "ocr_text": "识别出的文字...",
+            "text": "识别出的文字...",
+            "chars": N,
+            "conf": 0.95,
+            "needs_correction": false,
+            "quality": {...}    # 质量评估结果
+        }
+    """
+    if not os.path.exists(image_path):
+        return {"ok": False, "error": f"图片不存在: {image_path}"}
+
+    # 优先尝试 PPStructureV3
+    try:
+        result = _ocr_structured(image_path)
+        if result.get("ok") and result.get("text"):
+            quality = _check_ocr_quality(result, image_path)
+            return {
+                "ok": True,
+                "ocr_text": result.get("text", ""),
+                "text": result.get("text", ""),
+                "chars": result.get("chars", len(result.get("text", ""))),
+                "conf": result.get("conf", 0.0),
+                "needs_correction": quality.get("grade") != "good",
+                "quality": quality,
+            }
+    except Exception:
+        pass  # 回退到 PaddleOCR
+
+    # 回退到 PaddleOCR
+    try:
+        result = _ocr_paddle(image_path)
+        if result.get("ok"):
+            quality = _check_ocr_quality(result, image_path)
+            return {
+                "ok": True,
+                "ocr_text": result.get("text", ""),
+                "text": result.get("text", ""),
+                "chars": result.get("chars", len(result.get("text", ""))),
+                "conf": result.get("conf", 0.0),
+                "needs_correction": quality.get("grade") != "good",
+                "quality": quality,
+            }
+    except Exception as e:
+        return {"ok": False, "error": f"OCR 引擎初始化失败: {e}"}
+
+    return {"ok": False, "error": "无法加载任何 OCR 引擎"}
+
 def _embed(texts: list[str], model: str = EMBED_MODEL) -> list[list[float]]:
     """调用 Ollama 批量获取嵌入向量（优先批量，失败回退逐条）。"""
     if not texts:
@@ -509,6 +566,30 @@ def _ensure_collection(collection: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def create_collection(collection: str) -> dict:
+    """
+    创建新的知识库集合。如果集合已存在则报错。
+
+    返回:
+        {"ok": true, "collection": "...", "dim": N}
+    """
+    if not _check_qdrant():
+        return {"ok": False, "error": "Qdrant 未运行"}
+    try:
+        resp = requests.get(f"{QDRANT_URL}/collections", timeout=5)
+        existing = [c["name"] for c in resp.json()["result"]["collections"]]
+        if collection in existing:
+            return {"ok": False, "error": f"集合「{collection}」已存在"}
+        requests.put(
+            f"{QDRANT_URL}/collections/{collection}",
+            json={"vectors": {"size": EMBED_DIM, "distance": "Cosine"}},
+            timeout=10
+        )
+        return {"ok": True, "collection": collection, "dim": EMBED_DIM}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def list_collections() -> dict:
@@ -1547,7 +1628,8 @@ def auto_classify(text: str) -> dict:
         KNOWLEDGE_TYPE_OPTIONS, TRUST_SCORE_LABELS
     )
 
-    if not LLM_API_KEY:
+    api_key = os.environ.get("KB_LLM_API_KEY") or LLM_API_KEY
+    if not api_key:
         return {"ok": False, "error": "未配置 LLM API Key，无法自动分类。请在引擎配置页面设置。"}
 
     # ── 截取样本（分类不需要全文）──
@@ -1607,9 +1689,9 @@ def auto_classify(text: str) -> dict:
     try:
         raw = _call_llm_api(
             [{"role": "user", "content": prompt}],
-            base_url=LLM_BASE_URL,
-            api_key=LLM_API_KEY,
-            model=LLM_MODEL,
+            base_url=os.environ.get("KB_LLM_BASE_URL") or LLM_BASE_URL,
+            api_key=api_key,
+            model=os.environ.get("KB_LLM_MODEL") or LLM_MODEL,
         )
     except Exception as e:
         return {"ok": False, "error": f"LLM 调用失败: {e}"}
@@ -2330,9 +2412,10 @@ def answer(
         facet_filter: 分面过滤条件（见 search() 函数说明）
     """
     output_dir = output_dir or OUTPUT_DIR
-    llm_model = llm_model or LLM_MODEL
-    llm_base_url = llm_base_url or LLM_BASE_URL
-    llm_api_key = llm_api_key or LLM_API_KEY
+    # 从 os.environ 实时读取（避免 .env 加载顺序导致的空值）
+    llm_model = llm_model or os.environ.get("KB_LLM_MODEL") or LLM_MODEL
+    llm_base_url = llm_base_url or os.environ.get("KB_LLM_BASE_URL") or LLM_BASE_URL
+    llm_api_key = llm_api_key or os.environ.get("KB_LLM_API_KEY") or LLM_API_KEY
 
     if not llm_base_url or not llm_api_key:
         return {

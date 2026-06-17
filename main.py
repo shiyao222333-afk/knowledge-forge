@@ -20,6 +20,7 @@ import asyncio
 import json
 import html as html_mod
 from collections import defaultdict
+from fastapi.responses import FileResponse
 
 # ── 路径设置 ──
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -112,9 +113,12 @@ def refresh_system_state():
 import requests as _requests
 _qdrant_alive = False
 try:
+    print(f"[启动] 检查 Qdrant: {kb_query.QDRANT_URL}/collections", flush=True)
     _r = _requests.get(f"{kb_query.QDRANT_URL}/collections", timeout=3)
     _qdrant_alive = _r.status_code == 200
-except Exception:
+    print(f"[启动] Qdrant 状态: {_r.status_code} -> {_qdrant_alive}", flush=True)
+except Exception as _e:
+    print(f"[启动] Qdrant 离线: {_e}", flush=True)
     pass
 
 if _qdrant_alive:
@@ -159,7 +163,9 @@ def build_left_drawer():
         # 系统状态
         with ui.column().classes("w-full px-4"):
             ui.markdown("### 📊 系统状态")
-            status_badge = ui.badge("离线", color="red")
+            _initial = "在线" if STATE["qdrant_online"] else "离线"
+            _color   = "green" if STATE["qdrant_online"] else "red"
+            status_badge = ui.badge(_initial, color=_color)
             points_label = ui.label("文档块: --").classes("text-sm")
             dim_label = ui.label("维度: --").classes("text-sm")
 
@@ -176,6 +182,9 @@ def build_left_drawer():
                     status_badge.props("color=red")
 
             ui.button("🔄 刷新", on_click=_update_status).props("flat dense").classes("text-xs")
+
+            # 定时自动刷新状态（每 10 秒）
+            ui.timer(10.0, _update_status)
 
         ui.separator()
 
@@ -258,7 +267,9 @@ def page_ingest():
 
                 def on_upload(e):
                     nonlocal ingest_content, ingest_source, ingest_method
+                    temp_path = None
                     try:
+                        import tempfile
                         file_bytes = e.content.read()
                         fname = e.name
                         fsize = len(file_bytes)
@@ -266,21 +277,32 @@ def page_ingest():
                             ui.notify(f"⚠️ 文件 {fname} 超过 {SIZE_LIMIT_MB}MB 上限", type="warning")
                             return
 
+                        # 保存到临时文件
+                        suffix = os.path.splitext(fname)[1] or ".tmp"
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, mode="wb") as tf:
+                            tf.write(file_bytes)
+                            temp_path = tf.name
+
                         # 检测文件类型
-                        file_type = detect_file_type(fname, file_bytes)
+                        file_type = detect_file_type(temp_path)
                         STATE["file_info"] = file_type
                         ext_label = ".".join(file_type.get("extensions", ["?"]))
 
                         up_result.set_text(f"📎 {fname} · {fsize/1024:.1f}KB · {ext_label} · {file_type.get('format_name', '?')}")
 
                         # 提取文本
-                        text = extract_text(fname, file_bytes)
+                        extract_result = extract_text(temp_path)
+                        if isinstance(extract_result, dict):
+                            text = extract_result.get("text", "")
+                        else:
+                            text = str(extract_result)
                         if len(text) > 5000:
                             ui.notify(f"文本较长 ({len(text)} 字)，已截取前 5000 字发送给 AI 分析", type="warning")
                             text = text[:5000]
 
                         # 提取自动元数据
-                        auto_meta = extract_auto_metadata(fname, file_bytes, file_type)
+                        auto_meta_result = extract_auto_metadata(temp_path, file_type)
+                        auto_meta = auto_meta_result.get("flat", {}) if isinstance(auto_meta_result, dict) else {}
                         STATE["auto_metadata"] = auto_meta
 
                         ingest_content = text
@@ -300,8 +322,14 @@ def page_ingest():
 
                     except Exception as ex:
                         ui.notify(f"❌ 处理失败: {ex}", type="negative")
+                    finally:
+                        if temp_path and os.path.exists(temp_path):
+                            try:
+                                os.unlink(temp_path)
+                            except OSError:
+                                pass
 
-                upload.on("upload", on_upload)
+                upload.on_upload(on_upload)
 
         # ── Tab 2: OCR ──
         with tab_panels:
@@ -317,11 +345,19 @@ def page_ingest():
 
                 def on_ocr(e):
                     nonlocal ingest_content, ingest_source, ingest_method
+                    temp_path = None
                     try:
+                        import tempfile
                         file_bytes = e.content.read()
-                        with open(f"_temp_ocr_{e.name}", "wb") as tf:
+                        fname = e.name
+
+                        # 保存到临时文件
+                        suffix = os.path.splitext(fname)[1] or ".tmp"
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, mode="wb") as tf:
                             tf.write(file_bytes)
-                        result = kb_query.ocr_image(f"_temp_ocr_{e.name}")
+                            temp_path = tf.name
+
+                        result = kb_query.ocr_image(temp_path)
                         text = result.get("ocr_text", "")
                         content_text.set_value(text)
                         ingest_content = text
@@ -336,8 +372,14 @@ def page_ingest():
                             ocr_result_label.set_text(f"⚠️ 识别质量较低，建议 AI 纠错 ({len(text)} 字)")
                     except Exception as ex:
                         ui.notify(f"❌ OCR 失败: {ex}", type="negative")
+                    finally:
+                        if temp_path and os.path.exists(temp_path):
+                            try:
+                                os.unlink(temp_path)
+                            except OSError:
+                                pass
 
-                ocr_upload.on("upload", on_ocr)
+                ocr_upload.on_upload(on_ocr)
 
         # ── Tab 3: 手动输入 ──
         with tab_panels:
@@ -433,7 +475,7 @@ def page_ingest():
         ui.separator()
 
         # ── 摄入按钮 ──
-        def do_ingest():
+        async def do_ingest():
             nonlocal ingest_content, ingest_method, ingest_source
             if not STATE["qdrant_online"]:
                 ui.notify("⚠️ Qdrant 离线", type="negative")
@@ -459,7 +501,12 @@ def page_ingest():
                     "source": ingest_source,
                     "ingest_method": ingest_method or "manual",
                 }
-                result = kb_query.ingest(ingest_content, metadata=metadata, collection=STATE["active_collection"])
+                result = await asyncio.to_thread(
+                    kb_query.ingest,
+                    text=ingest_content,
+                    metadata=metadata,
+                    collection=STATE["active_collection"],
+                )
                 if result.get("ok"):
                     ui.notify(f"✅ 摄入成功！({result.get('chunks', '?')} 块)", type="positive")
                     # 重置
@@ -481,7 +528,7 @@ def page_ingest():
         ui.button("🚀 摄入到知识库", on_click=do_ingest).props("color=green size=lg").classes("w-full mt-2")
 
         # AI 分析回调
-        def do_ai_analyze():
+        async def do_ai_analyze():
             nonlocal ingest_content
             if not ingest_content.strip():
                 ui.notify("⚠️ 请先输入内容", type="warning")
@@ -494,7 +541,7 @@ def page_ingest():
 
             ai_status.set_text("正在分析...")
             try:
-                result = kb_query.auto_classify(ingest_content)
+                result = await asyncio.to_thread(kb_query.auto_classify, ingest_content)
                 if result and result.get("ok"):
                     cls = result.get("classification", result)
                     STATE["classify_result"] = result
@@ -531,7 +578,7 @@ def page_ingest():
                 ai_status.set_text(f"❌ 分析失败: {ex}")
                 ui.notify(f"AI 分析失败: {ex}", type="negative")
 
-        ai_btn.on("click", do_ai_analyze)
+        ai_btn.on_click(do_ai_analyze)
 
 
 # ═══════════════════════════════════════════
@@ -568,7 +615,7 @@ def page_search():
             top_k = ui.number(label="Top K", value=5, min=1, max=20, step=1).classes("w-20")
             use_llm = ui.switch("使用 AI 回答", value=True)
 
-        search_btn = ui.button("🔍 搜索", on_click=lambda: None).props("color=blue size=lg")
+        search_btn = ui.button("🔍 搜索").props("color=blue size=lg")
         results_area = ui.column().classes("w-full mt-6")
 
         async def do_search():
@@ -578,47 +625,99 @@ def page_search():
                 ui.notify("请输入搜索内容", type="warning")
                 return
 
-            with results_area:
-                ui.spinner(size="lg").classes("self-center")
-                await asyncio.sleep(0.1)  # let spinner render
-
             try:
                 if use_llm.value:
-                    result = kb_query.answer(
+                    # 先搜索（较快），显示中间状态
+                    with results_area:
+                        ui.spinner(size="lg")
+                        ui.label("🔍 正在搜索相关文档...").classes("text-sm text-gray-400")
+
+                    search_result = await asyncio.to_thread(
+                        kb_query.search,
                         query,
-                        top_k=top_k.value,
-                        collection=search_col.value,
+                        top_k.value,
+                        search_col.value,
                     )
+
+                    # 再调用 LLM 合成答案（可能较慢）
                     with results_area:
                         results_area.clear()
-                        ui.markdown("### 🤖 AI 回答")
-                        answer_text = result.get("answer", "无回答")
-                        ui.markdown(answer_text)
+                        ui.spinner(size="lg")
+                        ui.label("🤖 正在调用 AI 合成答案（首次加载模型约需30秒）...").classes("text-sm text-gray-400")
 
-                        highlights = result.get("highlights", [])
-                        if highlights:
-                            ui.separator()
-                            ui.markdown("### 📚 来源引用")
-                            for i, h in enumerate(highlights):
+                    result = await asyncio.to_thread(
+                        kb_query.answer,
+                        query,
+                        top_k.value,
+                        search_col.value,
+                        output_dir=kb_query.OUTPUT_DIR,
+                    )
+
+                    with results_area:
+                        results_area.clear()
+                        if result.get("ok"):
+                            ui.markdown("### 🤖 AI 回答")
+                            answer_text = result.get("synthesis", "无回答")
+                            ui.markdown(answer_text)
+
+                            # HTML 报告链接
+                            html_path = result.get("html")
+                            if html_path and os.path.exists(html_path):
+                                with ui.card().classes("w-full bg-blue-50"):
+                                    ui.markdown("#### 📄 完整报告已生成")
+                                    ui.label(f"文件: {os.path.basename(html_path)}").classes("text-xs text-gray-500")
+                                    ui.button("🌐 在浏览器打开", on_click=lambda p=os.path.basename(html_path): ui.run_javascript(f'window.open("/reports/{p}", "_blank")')).props("dense flat color=blue")
+
+                            chunks = result.get("chunks", [])
+                            if chunks:
+                                ui.separator()
+                                ui.markdown("### 📚 来源引用")
+                                for i, c in enumerate(chunks):
+                                    with ui.card().classes("w-full"):
+                                        title = c.get("title") or c.get("source", "未知")
+                                        ui.markdown(f"**{i+1}.** {title}")
+                                        ui.markdown(f"```\n{c.get('text', '')[:300]}\n```")
+                                        ui.label(f"分数: {c.get('score', 0):.2f}").classes("text-xs text-gray-500")
+                        else:
+                            # LLM 不可用，回退显示搜索结果
+                            error_msg = result.get("error", "")
+                            if "LLM API" in error_msg or "未配置" in error_msg:
+                                ui.notify("💡 LLM 未配置，已回退为纯搜索模式。在配置页设置 API Key 后可启用 AI 回答。", type="info")
+                            else:
+                                ui.notify(f"AI 回答失败: {error_msg}", type="warning")
+
+                            # 回退显示搜索结果
+                            ui.markdown("### 🔍 搜索结果（AI 未启用）")
+                            sr = search_result
+                            for i, c in enumerate(sr.get("chunks", [])):
                                 with ui.card().classes("w-full"):
-                                    ui.markdown(f"**{i+1}.** {h.get('title', '无标题')}")
-                                    ui.markdown(f"```\n{h.get('text', '')[:300]}\n```")
-                                    ui.label(f"分数: {h.get('score', 0):.2f}").classes("text-xs text-gray-500")
+                                    title = c.get("title") or c.get("source", "未知")
+                                    ui.markdown(f"**{i+1}.** {title}")
+                                    ui.markdown(f"```\n{c.get('text', '')[:300]}\n```")
+                                    ui.label(f"分数: {c.get('score', 0):.2f}").classes("text-xs text-gray-500")
+
                     STATE["last_answer"] = result
                 else:
-                    result = kb_query.search(
+                    with results_area:
+                        ui.spinner(size="lg").classes("self-center")
+                        ui.label("🔍 正在搜索...").classes("text-sm text-gray-400")
+                        await asyncio.sleep(0.1)
+
+                    result = await asyncio.to_thread(
+                        kb_query.search,
                         query,
-                        top_k=top_k.value,
-                        collection=search_col.value,
+                        top_k.value,
+                        search_col.value,
                     )
                     with results_area:
                         results_area.clear()
                         ui.markdown("### 🔍 搜索结果")
-                        for i, r in enumerate(result.get("results", [])):
+                        for i, c in enumerate(result.get("chunks", [])):
                             with ui.card().classes("w-full"):
-                                ui.markdown(f"**{i+1}.** {r.get('title', '无标题')}")
-                                ui.markdown(f"```\n{r.get('text', '')[:300]}\n```")
-                                ui.label(f"分数: {r.get('score', 0):.2f}").classes("text-xs text-gray-500")
+                                title = c.get("title") or c.get("source", "未知")
+                                ui.markdown(f"**{i+1}.** {title}")
+                                ui.markdown(f"```\n{c.get('text', '')[:300]}\n```")
+                                ui.label(f"分数: {c.get('score', 0):.2f}").classes("text-xs text-gray-500")
                     STATE["last_search"] = result
 
                 refresh_system_state()
@@ -627,7 +726,7 @@ def page_search():
                     results_area.clear()
                     ui.notify(f"搜索失败: {ex}", type="negative")
 
-        search_btn.on("click", do_search)
+        search_btn.on_click(do_search)
 
 
 # ═══════════════════════════════════════════
@@ -678,16 +777,43 @@ def page_hub():
 
                 ui.button("➕ 创建知识库", on_click=create_col).props("color=blue").classes("mb-2")
 
-                def clear_col():
+                # 清空集合（带确认对话框）
+                def do_clear_collection():
                     try:
-                        result = kb_query.clear_collection(current)
+                        result = kb_query.clear_collection(STATE["active_collection"])
                         if result.get("ok"):
                             ui.notify(f"✅ 已清空 {result.get('deleted', 0)} 条", type="positive")
                             refresh_system_state()
+                        else:
+                            ui.notify(f"清空失败: {result.get('error', '?')}", type="negative")
                     except Exception as ex:
                         ui.notify(f"清空失败: {ex}", type="negative")
 
-                ui.button("🗑️ 清空当前库", on_click=lambda: ui.notify("⚠️ 请确认：此操作不可撤销。再次点击确认清空。", type="warning")).props("color=red flat")
+                # 确认对话框（布局时创建，默认隐藏）
+                clear_dialog = ui.dialog().props("persistent")
+                with clear_dialog:
+                    with ui.card().classes("p-4"):
+                        clear_warn = ui.label("⚠️ 确认清空知识库？").classes("text-lg font-bold")
+                        clear_detail = ui.label("").classes("text-sm text-gray-500")
+                        with ui.row().classes("gap-2 mt-4"):
+                            ui.button("取消", on_click=clear_dialog.close).props("flat")
+                            ui.button(
+                                "确认清空",
+                                on_click=lambda: [do_clear_collection(), clear_dialog.close()],
+                            ).props("color=red")
+
+                clear_btn = ui.button("🗑️ 清空当前库").props("color=red flat")
+                with clear_btn:
+                    ui.tooltip("⚠️ 此操作不可撤销")
+
+                def on_clear_click():
+                    clear_detail.set_text(
+                        f"知识库「{STATE['active_collection']}」中的所有数据将"
+                        f"被删除，此操作不可撤销。"
+                    )
+                    clear_dialog.open()
+
+                clear_btn.on_click(on_clear_click)
 
         # 切换集合
         if len(collections) > 1:
@@ -867,6 +993,16 @@ def startup():
     threading.Thread(target=_auto_shutdown, daemon=True).start()
 
 
+@app.get("/reports/{filename}")
+def _serve_report(filename: str):
+    """Serve report HTML/PDF files from local_data/reports/."""
+    file_path = os.path.join(PROJECT_DIR, "local_data", "reports", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"error": "File not found"}, status_code=404)
+
+
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run(
         title="Athanor · 熔知",
@@ -875,4 +1011,5 @@ if __name__ in {"__main__", "__mp_main__"}:
         reload=False,
         show=False,
         storage_secret="athanor-mindforge-secret",
+        reconnect_timeout=120,  # 给 LLM/嵌入模型 充足加载时间
     )
