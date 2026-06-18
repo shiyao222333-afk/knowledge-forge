@@ -1,6 +1,6 @@
 """
 Athanor · 熔知 / MindForge — NiceGUI 主入口
-v0.4.5 → NiceGUI migration (分面 v5.0)
+v0.4.4 → NiceGUI migration (分面 v5.0)
 
 纯 Python SPA 架构：页面切换不重跑脚本，WebSocket 实时通信
 底层：FastAPI + Vue + Quasar + WebSocket
@@ -18,6 +18,7 @@ import threading
 import time
 import asyncio
 import json
+from datetime import datetime, timezone
 import html as html_mod
 from collections import defaultdict
 from fastapi.responses import FileResponse
@@ -112,6 +113,7 @@ def refresh_system_state():
 # ── 启动时刷新状态（异步，不阻塞启动）──
 import requests as _requests
 _qdrant_alive = False
+_r = None
 try:
     print(f"[启动] 检查 Qdrant: {kb_query.QDRANT_URL}/collections", flush=True)
     _r = _requests.get(f"{kb_query.QDRANT_URL}/collections", timeout=3)
@@ -119,13 +121,14 @@ try:
     print(f"[启动] Qdrant 状态: {_r.status_code} -> {_qdrant_alive}", flush=True)
 except Exception as _e:
     print(f"[启动] Qdrant 离线: {_e}", flush=True)
-    pass
 
 if _qdrant_alive:
     refresh_system_state()
 else:
     STATE["qdrant_online"] = False
-del _requests, _r, _qdrant_alive
+
+del _r, _qdrant_alive
+# _requests 保留（后续路由可能用到）
 
 # 嵌入模型预设
 EMBED_PRESETS = {
@@ -196,6 +199,9 @@ def build_left_drawer():
             ui.link("💬 智能检索", "/search").classes(
                 "w-full text-left p-2 rounded hover:bg-blue-700 transition no-underline text-white"
             )
+            ui.link("📄 文档管理", "/manage").classes(
+                "w-full text-left p-2 rounded hover:bg-blue-700 transition no-underline text-white"
+            )
             ui.link("🗂️ 知识中枢", "/hub").classes(
                 "w-full text-left p-2 rounded hover:bg-blue-700 transition no-underline text-white"
             )
@@ -255,7 +261,13 @@ def page_ingest():
         # ── Tab 1: 文件上传 ──
         with tab_panels:
             with ui.tab_panel(upload_tab):
-                ui.label("支持格式：TXT, MD, JSON, CSV, PDF, EPUB, HTML, SRT, DOCX, PPTX, PNG, JPG, BMP").classes("text-sm text-gray-400")
+                # 动态生成支持格式列表（从 FORMAT_DISPLAY_NAMES）
+                text_formats = [k for k in FORMAT_DISPLAY_NAMES if k not in ("jpeg","png","tiff","bmp","webp")]
+                img_formats = [k for k in FORMAT_DISPLAY_NAMES if k in ("jpeg","png","tiff","bmp","webp")]
+                fmt_parts = [f"**{f}** ({FORMAT_DISPLAY_NAMES[f]})" for f in text_formats]
+                img_parts = [f"**{f}** ({FORMAT_DISPLAY_NAMES[f]})" for f in img_formats]
+                ui.markdown(f"📄 文本格式：{' · '.join(fmt_parts)}").classes("text-sm text-gray-500")
+                ui.markdown(f"🖼️ 图片格式（OCR）：{' · '.join(img_parts)}").classes("text-sm text-gray-400")
                 upload = ui.upload(
                     label="拖拽或点击上传文件",
                     auto_upload=True,
@@ -290,6 +302,15 @@ def page_ingest():
 
                         up_result.set_text(f"📎 {fname} · {fsize/1024:.1f}KB · {ext_label} · {file_type.get('format_name', '?')}")
 
+                        # 格式识别预览（显示层级 + 元数据能力）
+                        tier = file_type.get("tier", "?")
+                        tier_name = file_type.get("tier_name", "")
+                        has_meta = file_type.get("has_auto_metadata", False)
+                        tier_badge = {1: "green", 2: "blue", 3: "orange", 4: "gray"}.get(tier, "gray")
+                        meta_badge = "✅ 自带元数据" if has_meta else "🤖 需 AI 标注"
+                        ui.badge(f"T{tier}: {tier_name}", color=tier_badge)
+                        ui.badge(meta_badge, color="teal" if has_meta else "blue")
+
                         # 提取文本
                         extract_result = extract_text(temp_path)
                         if isinstance(extract_result, dict):
@@ -313,6 +334,7 @@ def page_ingest():
                         STATE["ingest_content"] = text
                         STATE["ingest_source"] = fname
                         STATE["ingest_method"] = "upload"
+                        STATE["source_path"] = fname  # 原始文件路径标记
 
                         # 显示自动元数据
                         if auto_meta:
@@ -367,6 +389,7 @@ def page_ingest():
                         STATE["ingest_content"] = text
                         STATE["ingest_source"] = f"OCR: {e.name}"
                         STATE["ingest_method"] = "ocr"
+                        STATE["source_path"] = f"ocr:{e.name}"  # OCR 来源标记（无源文件路径）
                         ocr_result_label.set_text(f"✅ 识别完成，{len(text)} 字")
                         if result.get("needs_correction"):
                             ocr_result_label.set_text(f"⚠️ 识别质量较低，建议 AI 纠错 ({len(text)} 字)")
@@ -400,6 +423,7 @@ def page_ingest():
                     STATE["ingest_content"] = txt
                     STATE["ingest_source"] = "手动输入"
                     STATE["ingest_method"] = "manual"
+                    STATE["source_path"] = ""  # 手动输入，无源文件
 
                 ui.button("📥 确认内容", on_click=on_manual_save).props("color=blue")
 
@@ -483,15 +507,16 @@ def page_ingest():
             if not ingest_content.strip():
                 ui.notify("⚠️ 没有内容可摄入", type="negative")
                 return
+
+            # ── 域字段可选了（AI 会自动填，不再强制用户手动选）──
             domain_val = domain.value or []
-            if not domain_val:
-                ui.notify("❌ 「主题域」为必填分面，请至少选择一个", type="negative")
-                return
 
             try:
+                # 元数据来源：根据摄入方式标记
+                _meta_source_map = {"upload": "file", "ocr": "ocr", "manual": "manual"}
                 metadata = {
                     "content_type": content_type.value,
-                    "domain": list(domain_val) if isinstance(domain_val, (list, tuple)) else [domain_val],
+                    "domain": list(domain_val) if isinstance(domain_val, (list, tuple)) else [],
                     "temporal_nature": temporal_nature.value,
                     "epistemic_status": epistemic_status.value,
                     "lifecycle": lifecycle.value,
@@ -499,8 +524,58 @@ def page_ingest():
                     "trust_score": trust_score.value,
                     "keywords": [k.strip() for k in (keywords.value or "").split(",") if k.strip()],
                     "source": ingest_source,
+                    "source_path": STATE.get("source_path", ""),
                     "ingest_method": ingest_method or "manual",
+                    "metadata_source": _meta_source_map.get(ingest_method, "manual"),
                 }
+
+                # ── 合并 AI 分类结果中的额外字段 ──
+                cls_result = STATE.get("classify_result", {}).get("classification", {})
+                if cls_result:
+                    for key in ("auto_summary", "is_personal", "title", "author", "udc_code"):
+                        if key in cls_result and key not in metadata:
+                            metadata[key] = cls_result[key]
+
+                # ── 置信度路由 ──
+                classify_result = STATE.get("classify_result", {})
+                confidence = classify_result.get("classification", {}).get("confidence", {})
+                overall_conf = confidence.get("overall", 0.5) if isinstance(confidence, dict) else 0.5
+
+                if overall_conf >= 0.8:
+                    needs_review = False
+                    dlq = False
+                elif overall_conf >= 0.5:
+                    needs_review = True
+                    dlq = False
+                else:
+                    # 置信度过低 → 死信队列
+                    needs_review = False
+                    dlq = True
+
+                if dlq:
+                    # 写入 Dead Letter Queue
+                    import json, time as _time
+                    dlq_dir = os.path.join(PROJECT_DIR, "local_data", "dead_letter")
+                    os.makedirs(dlq_dir, exist_ok=True)
+                    dlq_file = os.path.join(dlq_dir, f"{int(_time.time())}.json")
+                    dlq_data = {
+                        "content": ingest_content[:3000],
+                        "metadata": metadata,
+                        "confidence": confidence,
+                        "reason": f"置信度过低（{overall_conf:.2f} < 0.5），需人工审核",
+                        "ingested_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    with open(dlq_file, "w", encoding="utf-8") as f:
+                        json.dump(dlq_data, f, ensure_ascii=False, indent=2)
+                    ui.notify(
+                        f"✋ 置信度过低（{overall_conf:.1%}），已放入死信队列待审核",
+                        type="warning",
+                    )
+                    return
+
+                if needs_review:
+                    metadata["needs_review"] = True
+
                 result = await asyncio.to_thread(
                     kb_query.ingest,
                     text=ingest_content,
@@ -519,6 +594,7 @@ def page_ingest():
                     epistemic_status.set_value("unverified")
                     lifecycle.set_value("published")
                     project_source.set_value("")
+                    STATE["source_path"] = ""
                     refresh_system_state()
                 else:
                     ui.notify(f"❌ 摄入失败: {result.get('error', '?')}", type="negative")
@@ -571,9 +647,9 @@ def page_ingest():
                     kw = cls.get("keywords", [])
                     if kw:
                         keywords.set_value(", ".join(kw if isinstance(kw, list) else [str(kw)]))
-                    ui.notify("LLM 分析结果已自动填入表单，请确认后摄入", type="positive")
+                    ui.notify("AI 分析结果已自动填入，可直接摄入", type="positive")
                 else:
-                    ai_status.set_text("⚠️ 分析返回为空，请手动填写")
+                    ai_status.set_text("⚠️ 分析返回为空，将使用默认值摄入")
             except Exception as ex:
                 ai_status.set_text(f"❌ 分析失败: {ex}")
                 ui.notify(f"AI 分析失败: {ex}", type="negative")
@@ -1001,6 +1077,121 @@ def _serve_report(filename: str):
         return FileResponse(file_path)
     from fastapi.responses import JSONResponse
     return JSONResponse({"error": "File not found"}, status_code=404)
+
+
+# ═══════════════════════════════════════
+# 页面 4：文档管理
+# ═══════════════════════════════════════
+
+@ui.page("/manage")
+def page_manage():
+    """文档管理页面：列表、查看、删除。"""
+    build_left_drawer()
+
+    with ui.column().classes("w-full p-6"):
+        ui.markdown("# 📄 文档管理")
+        ui.markdown("*查看、删除知识库中的文档。*")
+
+        if not STATE["qdrant_online"]:
+            ui.badge("⚠️ Qdrant 离线，无法管理。", color="red")
+            return
+
+        # ── 状态 ──
+        page_state = {"page": 1, "page_size": 20, "total": 0, "total_pages": 1}
+        doc_list = ui.column().classes("w-full gap-2")
+        pagination_row = ui.row().classes("w-full justify-center gap-2 mt-4")
+
+        # ── 删除确认对话框 ──
+        confirm_dlg = ui.dialog()
+        dlg_doc_uid = {"val": ""}
+        with confirm_dlg:
+            with ui.card():
+                ui.label("⚠️ 确认删除").classes("text-lg font-bold")
+                ui.label("删除后不可恢复。确定要删除此文档吗？")
+                with ui.row():
+                    def _do_delete():
+                        uid = dlg_doc_uid["val"]
+                        confirm_dlg.close()
+                        res = kb_query.delete_document(uid, STATE["active_collection"])
+                        if res.get("ok"):
+                            ui.notify(f"✅ 已删除 {res.get('deleted', 0)} 个分块", type="positive")
+                            load_docs(page_state["page"])
+                        else:
+                            ui.notify(f"删除失败: {res.get('error', '')}", type="negative")
+                    ui.button("确认删除", on_click=_do_delete, color="red")
+                    ui.button("取消", on_click=lambda: confirm_dlg.close())
+
+        # ── 查看详情对话框 ──
+        detail_dlg = ui.dialog()
+        with detail_dlg:
+            with ui.card().classes("w-800 max-w-full"):
+                dlg_title = ui.markdown("")
+                dlg_content = ui.markdown("")
+
+        def show_detail(doc_uid: str):
+            """加载并显示文档详情。"""
+            res = kb_query.get_document(doc_uid, STATE["active_collection"])
+            if not res.get("ok"):
+                ui.notify(f"加载失败: {res.get('error', '')}", type="negative")
+                return
+            chunks = res.get("chunks", [])
+            dlg_title.set_content(f"## 📄 {chunks[0].get('title', '') if chunks else doc_uid}")
+            preview = "\n\n---\n\n".join(
+                f"**分块 {c['chunk_index']}**\n```\n{c['text'][:500]}\n```" for c in chunks[:5]
+            )
+            if len(chunks) > 5:
+                preview += f"\n\n...（共 {len(chunks)} 个分块）"
+            dlg_content.set_content(preview)
+            detail_dlg.open()
+
+        def load_docs(page: int):
+            """加载指定页。"""
+            page = max(1, page)
+            res = kb_query.list_documents(
+                STATE["active_collection"],
+                page=page,
+                page_size=page_state["page_size"],
+            )
+            if not res.get("ok"):
+                ui.notify(f"加载失败: {res.get('error', '')}", type="negative")
+                return
+
+            page_state["page"] = page
+            page_state["total"] = res.get("total", 0)
+            page_state["total_pages"] = res.get("total_pages", 1)
+
+            doc_list.clear()
+            with doc_list:
+                for d in res.get("documents", []):
+                    uid = d.get("doc_uid", "")
+                    title = d.get("title", "") or d.get("source", "未知")
+                    ct = d.get("content_type", "")
+                    domains = ", ".join(d.get("domain", []))
+                    n_chunks = d.get("chunk_count", 0)
+                    with ui.card().classes("w-full"):
+                        with ui.row().classes("w-full items-center gap-4"):
+                            ui.markdown(f"**{title}**").classes("flex-1")
+                            ui.label(f"类型: {ct}").classes("text-sm text-gray-500")
+                            ui.label(f"领域: {domains}").classes("text-sm text-gray-500")
+                            ui.label(f"分块: {n_chunks}").classes("text-sm text-gray-500")
+                            with ui.row().classes("gap-1"):
+                                ui.button("👁️", on_click=lambda u=uid: show_detail(u), color="blue").props("flat dense")
+                                def _del(u=uid):
+                                    dlg_doc_uid["val"] = u
+                                    confirm_dlg.open()
+                                ui.button("🗑️", on_click=_del, color="red").props("flat dense")
+
+            # 分页
+            pagination_row.clear()
+            with pagination_row:
+                tp = page_state["total_pages"]
+                p = page_state["page"]
+                ui.button("◀ 上一页", on_click=lambda: load_docs(p - 1)).props("flat dense").set_enabled(p > 1)
+                ui.label(f"第 {p} / {tp} 页（共 {page_state['total']} 篇）").classes("self-center")
+                ui.button("下一页 ▶", on_click=lambda: load_docs(p + 1)).props("flat dense").set_enabled(p < tp)
+
+        # 初次加载
+        load_docs(1)
 
 
 if __name__ in {"__main__", "__mp_main__"}:
