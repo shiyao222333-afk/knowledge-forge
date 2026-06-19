@@ -63,8 +63,11 @@ except ImportError:
     PILImage = None
     HAS_PIL = False
 
+# 项目根目录（用于相对路径转换）
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # 图片存储目录
-IMAGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_data", "images")
+IMAGES_DIR = os.path.join(PROJECT_DIR, "local_data", "images")
 # 摄入日志（每行一条 JSON，记录原始文件路径和集合，用于重建）
 INGEST_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "local_data", "ingest_log.jsonl")
 
@@ -1493,9 +1496,11 @@ def ingest(
     valid_images = []
     for img_path in image_refs:
         if os.path.isfile(img_path):
-            valid_images.append(os.path.abspath(img_path))
+            # D5 修复：存储相对路径（提高可移植性）
+            valid_images.append(os.path.relpath(os.path.abspath(img_path), PROJECT_DIR))
         elif os.path.isfile(os.path.join(IMAGES_DIR, os.path.basename(img_path))):
-            valid_images.append(os.path.join(IMAGES_DIR, os.path.basename(img_path)))
+            # D5 修复：存储相对路径（提高可移植性）
+            valid_images.append(os.path.relpath(os.path.join(IMAGES_DIR, os.path.basename(img_path)), PROJECT_DIR))
 
     # ── 切块 ──
     chunks = _chunk_text(text)
@@ -1626,6 +1631,7 @@ def ingest(
                     "source_url": source_url,
                     "file_type": file_type,
                     "ingest_method": ingest_method,
+                    "source_path": file_path or "",  # F8 修复：存储原始文件路径
                 },
 
                 # ── stats（使用统计聚合）──
@@ -2396,7 +2402,13 @@ def _img_to_b64(img_path: str, max_w: int = 800) -> str:
     将图片文件转为 base64 data URI，嵌入 HTML 使用。
     自动缩小到 max_w 像素以内（避免 HTML 文件过大）。
     失败返回空字符串。
+    
+    D5 修复：支持相对路径（相对于 PROJECT_DIR）
     """
+    # D5 修复：如果路径是相对的，转换为绝对路径
+    if not os.path.isabs(img_path):
+        img_path = os.path.join(PROJECT_DIR, img_path)
+    
     if HAS_PIL:
         try:
             with PILImage.open(img_path) as im:
