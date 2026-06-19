@@ -492,8 +492,8 @@ def ocr_image(image_path: str) -> dict:
                 "needs_correction": quality.get("grade") != "good",
                 "quality": quality,
             }
-    except Exception:
-        pass  # 回退到 PaddleOCR
+    except Exception as e:
+        logger.warning(f"[OCR] PPStructure 失败，回退到 PaddleOCR: {e}")
 
     # 回退到 PaddleOCR
     try:
@@ -633,8 +633,8 @@ def _embed(texts: list[str], model: str = EMBED_MODEL) -> list[list[float]]:
         embeddings = resp.json().get("embeddings", [])
         if embeddings and len(embeddings) == len(texts):
             return embeddings
-    except Exception:
-        pass  # 回退到逐条
+    except Exception as e:
+        logger.warning(f"[Embed] 批量嵌入失败，回退到逐条: {e}")
     # 逐条回退 — 单条查询失败抛异常，批量摄入失败跳过
     vectors = []
     for i, text in enumerate(texts):
@@ -773,8 +773,8 @@ def _ensure_collection(collection: str) -> bool:
                         json={"field_name": field, "field_schema": schema},
                         timeout=5
                     )
-                except Exception:
-                    pass  # 索引已存在或创建失败，不影响主流程
+                except Exception as e:
+                    logger.warning(f"[Qdrant] Payload 索引创建失败（可忽略）: {e}")
         return True
     except Exception:
         return False
@@ -820,8 +820,8 @@ def create_collection(collection: str) -> dict:
                     json={"field_name": field, "field_schema": schema},
                     timeout=5
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[Qdrant] 集合创建异常（可忽略）: {e}")
         return {"ok": True, "collection": collection, "dim": EMBED_DIM}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -988,8 +988,8 @@ def _log_ingest(entry: dict):
         os.makedirs(os.path.dirname(INGEST_LOG_PATH), exist_ok=True)
         with open(INGEST_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception:
-        pass  # 日志写入失败不影响主流程
+    except Exception as e:
+        logger.warning(f"[IngestLog] 日志写入失败（可忽略）: {e}")
 
 
 # TODO: 函数 read_ingest_log 已废弃（无人调用），将在 v0.5.0 删除
@@ -1009,7 +1009,8 @@ def read_ingest_log() -> list[dict]:
                     continue
                 try:
                     entries.append(json.loads(line))
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"[Scroll] 分页读取失败（跳过此页）: {e}")
                     continue
         return entries
     except Exception:
