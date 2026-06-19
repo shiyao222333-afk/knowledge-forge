@@ -173,8 +173,9 @@ LLM 自由输出任意精度的 UDC 类号，如 `"621"` / `"621.39"` / `"621:00
 | `source_url` | string | 来源链接 |
 | `file_type` | string | 原始文件类型 |
 | `ingest_method` | string | 摄入方式 |
+| `source_path` | string | 原始文件路径（用于追溯） |
 
-`ingest_method` 可选值：`upload` / `email` / `api` / `crawler` / `manual`
+`ingest_method` 可选值：`upload` / `email` / `api` / `crawler` / `manual` / `ocr`
 
 ### stats 使用统计（1 个分组对象）
 
@@ -194,8 +195,9 @@ LLM 自由输出任意精度的 UDC 类号，如 `"621"` / `"621.39"` / `"621:00
 
 | 字段名 | 类型 | 说明 |
 |--------|------|------|
-| `doc_id` | string | 文档 ID |
-| `content_hash` | string | 内容哈希 |
+| `doc_id` | string | 文档 ID（UUID） |
+| `doc_uid` | string | 文档稳定标识（= doc_id，用于去重） |
+| `content_hash` | string | 内容哈希（SHA256 前 32 位） |
 | `language` | string | 语言 |
 | `access_level` | string | 访问权限 |
 | `is_archived` | boolean | 是否归档 |
@@ -242,7 +244,8 @@ LLM 自由输出任意精度的 UDC 类号，如 `"621"` / `"621.39"` / `"621:00
   "origin": {
     "author": "国家标准化管理委员会",
     "source_url": "https://std.gov.cn/gb1357",
-    "file_type": "txt", "ingest_method": "manual"
+    "file_type": "txt", "ingest_method": "manual",
+    "source_path": "D:/Documents/KnowledgeBase/机械设计/原始文件/gb1357.txt"
   },
 
   "stats": { "access_count": 0, "starred": false },
@@ -250,7 +253,8 @@ LLM 自由输出任意精度的 UDC 类号，如 `"621"` / `"621.39"` / `"621:00
   "target_platform": "none", "related_product": "",
   "version": "GB/T 1357-2008",
 
-  "doc_id": "a1b2c3d4", "content_hash": "sha256...",
+  "doc_id": "a1b2c3d4-e5f6-...", "doc_uid": "a1b2c3d4-e5f6-...",
+  "content_hash": "a1b2c3d4...",
   "language": "zh", "access_level": "private",
   "is_archived": false, "batch_id": "",
 
@@ -287,6 +291,7 @@ LLM 自由输出任意精度的 UDC 类号，如 `"621"` / `"621.39"` / `"621:00
 
 | 版本 | 日期 | 变更内容 |
 |------|------|----------|
+| v5.2 | 2026-06-20 | 添加 `origin.source_path` 字段（原始文件路径追溯）；添加 `doc_uid` 字段（文档稳定标识）；更新示例 JSON |
 | v5.1 | 2026-06-17 | 明确 36 = 28活跃+10扩展槽位；四象限来源分类；title/author 填充优先级（文件>AI>程序） |
 | v5.0 | 2026-06-16 | domain → UDC 9主类；分面3 temporal_nature(3级)；分面4 epistemic_status(3级/L0-L2)；lifecycle/project_source 降级普通字段；移除 objectivity；新增 udc_code 普通字段 |
 | v4.0 | 2026-06-15 | 36字段分组方案：content_type 15种、domain 9种、knowledge_type 11种；新增 relations/timeline/origin/stats 分组字段；新增 keywords/auto_summary/batch_id/is_archived/version；删除 content_stage/task_id/updated_at/quality_score/category |
