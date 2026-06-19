@@ -1,6 +1,6 @@
 """
 KB Query Engine - 中文技术文档知识库问答系统
-版本: v0.4.1 — 分面分类 v5.0 (UDC + temporal_nature + epistemic_status)
+版本: v0.4.5 — 分面分类 v5.1 (normalize_facet_values + L1-L3 pipeline)
 
 架构:
   摄入: 图片/文本 → PaddleOCR/PPStructureV3 → 分块嵌入 → Qdrant
@@ -42,8 +42,11 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 import tempfile
+from docx import Document
+from bs4 import BeautifulSoup
+from config.classifications import normalize_facet_values
 
-__version__ = "0.4.4"
+__version__ = "0.4.5"
 
 try:
     from fpdf import FPDF
@@ -511,6 +514,110 @@ def ocr_image(image_path: str) -> dict:
 
     return {"ok": False, "error": "无法加载任何 OCR 引擎"}
 
+def extract_text(file_path: str) -> dict:
+    """
+    统一文本提取入口：根据文件扩展名调用对应解析器。
+    
+    支持格式：
+      - .txt / .md / .json / .csv → 直接读取（自动检测编码）
+      - .docx → python-docx 提取文本
+      - .html / .htm → BeautifulSoup 提取文本（去除标签）
+      - .srt → 解析 SRT 字幕格式（去除时间戳）
+      - .pdf → 尝试 pdfplumber 提取文本
+    
+    返回:
+        {"ok": True, "text": "...", "chars": N, "meta": {}}
+        {"ok": False, "error": "..."}
+    """
+    if not os.path.exists(file_path):
+        return {"ok": False, "error": f"文件不存在: {file_path}"}
+    
+    ext = os.path.splitext(file_path)[1].lower()
+    
+    # ── 纯文本格式：直接读取 ──
+    if ext in (".txt", ".md", ".json", ".csv", ".log"):
+        encoding = detect_encoding(file_path)
+        try:
+            with open(file_path, "r", encoding=encoding) as f:
+                text = f.read()
+            return {"ok": True, "text": text, "chars": len(text), "meta": {"encoding": encoding}}
+        except Exception as e:
+            return {"ok": False, "error": f"读取文件失败: {e}"}
+    
+    # ── DOCX 格式 ──
+    if ext == ".docx":
+        try:
+            doc = Document(file_path)
+            parts = []
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    parts.append(para.text)
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            parts.append(cell.text)
+            text = "\n\n".join(parts)
+            return {"ok": True, "text": text, "chars": len(text), "meta": {"format": "docx"}}
+        except Exception as e:
+            return {"ok": False, "error": f"解析 DOCX 失败: {e}"}
+    
+    # ── HTML 格式 ──
+    if ext in (".html", ".htm"):
+        try:
+            with open(file_path, "r", encoding=detect_encoding(file_path)) as f:
+                soup = BeautifulSoup(f.read(), "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n")
+            text = re.sub(r"\n{3,}", "\n\n", text).strip()
+            return {"ok": True, "text": text, "chars": len(text), "meta": {"format": "html"}}
+        except Exception as e:
+            return {"ok": False, "error": f"解析 HTML 失败: {e}"}
+    
+    # ── SRT 字幕格式 ──
+    if ext == ".srt":
+        try:
+            encoding = detect_encoding(file_path)
+            with open(file_path, "r", encoding=encoding) as f:
+                content = f.read()
+            lines = []
+            for line in content.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                if line.isdigit():
+                    continue
+                if "-->" in line:
+                    continue
+                lines.append(line)
+            text = "\n".join(lines)
+            return {"ok": True, "text": text, "chars": len(text), "meta": {"format": "srt", "encoding": encoding}}
+        except Exception as e:
+            return {"ok": False, "error": f"解析 SRT 失败: {e}"}
+    
+    # ── PDF 格式 ──
+    if ext == ".pdf":
+        try:
+            import pdfplumber
+            with pdfplumber.open(file_path) as pdf:
+                parts = []
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        parts.append(page_text)
+                text = "\n\n".join(parts)
+            if not text.strip():
+                return {"ok": False, "error": "PDF 无文本内容（可能是扫描件，需要 OCR）"}
+            return {"ok": True, "text": text, "chars": len(text), "meta": {"format": "pdf", "pages": len(pdf.pages)}}
+        except ImportError:
+            return {"ok": False, "error": "需要安装 pdfplumber：pip install pdfplumber"}
+        except Exception as e:
+            return {"ok": False, "error": f"解析 PDF 失败: {e}"}
+    
+    # ── 不支持的格式 ──
+    return {"ok": False, "error": f"不支持的文件格式: {ext}"}
+
 def _embed(texts: list[str], model: str = EMBED_MODEL) -> list[list[float]]:
     """调用 Ollama 批量获取嵌入向量（优先批量，失败回退逐条）。单条查询失败 → 抛异常，批量摄入失败 → 跳过。"""
     if not texts:
@@ -574,6 +681,55 @@ def _detect_language(text: str) -> str:
     return "zh"  # 兜底
 
 
+def detect_encoding(file_path: str, sample_size: int = 10000) -> str:
+    """
+    检测文件编码。优先 chardet，失败后用 UTF-8 → GBK → latin-1 兜底链。
+    sample_size: 用于检测的字节数（默认 10000，约 10KB）
+    """
+    # 读取文件前 N 字节作为样本
+    with open(file_path, "rb") as f:
+        raw = f.read(sample_size)
+    if not raw:
+        return "utf-8"  # 空文件，默认 UTF-8
+
+    # 先试 chardet（如果已安装）
+    try:
+        import chardet
+        result = chardet.detect(raw)
+        enc = result.get("encoding", "").strip().lower()
+        conf = result.get("confidence", 0)
+        if enc and conf >= 0.6:
+            # chardet 可能返回 "utf-8"、"gb2312"、"gbk"、"iso-8859-1" 等
+            # 统一映射到 Python 编码名
+            enc_map = {
+                "utf-8": "utf-8",
+                "ascii": "utf-8",
+                "gb2312": "gbk",
+                "gbk": "gbk",
+                "gb18030": "gb18030",
+                "big5": "big5",
+                "iso-8859-1": "latin-1",
+                "windows-1252": "cp1252",
+            }
+            return enc_map.get(enc, enc)
+    except ImportError:
+        pass  # chardet 未安装，走兜底链
+
+    # 兜底链：UTF-8 → GBK → latin-1
+    try:
+        raw.decode("utf-8")
+        return "utf-8"
+    except UnicodeDecodeError:
+        pass
+    try:
+        raw.decode("gbk")
+        return "gbk"
+    except UnicodeDecodeError:
+        pass
+    # 最后兜底：latin-1 永不失败（但可能乱码）
+    return "latin-1"
+
+
 def _check_qdrant() -> bool:
     """检查 Qdrant 是否运行（纯检查，无副作用）。"""
     try:
@@ -596,6 +752,28 @@ def _ensure_collection(collection: str) -> bool:
                 json={"vectors": {"size": EMBED_DIM, "distance": "Cosine"}},
                 timeout=10
             )
+            # ── 创建 Payload Index（分面字段 + 常用过滤字段）──
+            payload_index_fields = {
+                "content_type":     "keyword",
+                "domain":          "keyword",  # list of keywords
+                "temporal_nature": "keyword",
+                "epistemic_status": "keyword",
+                "lifecycle":       "keyword",
+                "is_personal":     "bool",
+                "trust_score":      "integer",
+                "knowledge_type":   "keyword",
+                "language":        "keyword",
+                "access_level":     "keyword",
+            }
+            for field, schema in payload_index_fields.items():
+                try:
+                    requests.put(
+                        f"{QDRANT_URL}/collections/{collection}/index",
+                        json={"field_name": field, "field_schema": schema},
+                        timeout=5
+                    )
+                except Exception:
+                    pass  # 索引已存在或创建失败，不影响主流程
         return True
     except Exception:
         return False
@@ -1045,28 +1223,6 @@ def _text_hash(text: str) -> str:
     return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
 
-def _source_to_meta(source: str) -> dict:
-    """
-    解析 --source 参数为结构化元数据（已弃用，保留供外部脚本兼容）。
-    支持格式:
-      "书名/章节/页码"   → {book, chapter, page}
-      "文件名"           → {file_name}
-    
-    注意: v4.0 字段结构已不再使用 book/chapter/page 扁平字段，
-    新代码应直接在 metadata dict 中传入 title/source/origin 等。
-    """
-    meta = {"file_name": source}
-    parts = source.replace("\\", "/").split("/")
-    if len(parts) == 3:
-        meta["book"] = parts[0]
-        meta["chapter"] = parts[1]
-        meta["page"] = parts[2]
-    elif len(parts) == 2:
-        meta["book"] = parts[0]
-        meta["page"] = parts[1]
-    return meta
-
-
 def _extract_images(text: str) -> list[str]:
     """提取文本中的图片引用（支持 3 种格式：[:image:] / Markdown / HTML）。"""
     images = []
@@ -1148,8 +1304,41 @@ def _chunk_text(text: str, max_chars: int = 800, overlap: int = 60) -> list[str]
     return restored
 
 
+def _safe_slice_point(text: str, target: int) -> int:
+    """
+    寻找安全的切片点：优先在 target 附近找标点/空格，避免切断中文。
+    向前搜索 50 字符，向后搜索 50 字符。
+    找不到则返回 target（允许切断）。
+    """
+    if target <= 0 or target >= len(text):
+        return target
+    # 搜索范围：[target-50, target+50]，但不超过文本边界
+    start = max(0, target - 50)
+    end = min(len(text), target + 50)
+    # 优先找标点（中文+英文）
+    punctuation = set('。！？；;,.!? \n\t')
+    # 先向前找
+    for i in range(target, start, -1):
+        if text[i] in punctuation:
+            return i + 1  # 标点后开始新 chunk
+    # 再向后找
+    for i in range(target, end):
+        if text[i] in punctuation:
+            return i + 1
+    # 找不到标点，找空格
+    for i in range(target, start, -1):
+        if text[i] == ' ':
+            return i + 1
+    for i in range(target, end):
+        if text[i] == ' ':
+            return i + 1
+    # 实在找不到，返回 target
+    return target
+
+
 def _split_long_paragraph(text: str, max_chars: int, overlap: int) -> list[str]:
-    """将长段落按句子切分，不切断内联公式 $...$"""
+    """将长段落按句子切分，不切断内联公式 $...$。
+    超长句（>max_chars）安全切片，避免切断中文。"""
     sentences = re.split(r'(?<=[。；;])\s*', text)
     chunks = []
     current = ""
@@ -1162,9 +1351,13 @@ def _split_long_paragraph(text: str, max_chars: int, overlap: int) -> list[str]:
         else:
             if current:
                 chunks.append(current)
-            # 如果单句超长（例如含大段公式），保留完整
+            # 如果单句超长，安全切片
             if len(sent) > max_chars:
-                current = sent  # 不做暴力切割
+                while len(sent) > max_chars:
+                    cut = _safe_slice_point(sent, max_chars)
+                    chunks.append(sent[:cut])
+                    sent = sent[cut:].strip()
+                current = sent if sent else ""
             else:
                 current = sent
     if current:
@@ -1213,8 +1406,24 @@ def ingest(
     if file_path:
         if not os.path.exists(file_path):
             return {"ok": False, "error": f"文件不存在: {file_path}"}
-        with open(file_path, "r", encoding="utf-8") as f:
-            text = f.read()
+        # 根据文件扩展名选择读取方式
+        ext = os.path.splitext(file_path)[1].lower()
+        text_formats = (".txt", ".md", ".json", ".csv", ".log")
+        if ext in text_formats:
+            # 文本格式：直接读取（自动检测编码）
+            enc = detect_encoding(file_path)
+            try:
+                with open(file_path, "r", encoding=enc) as f:
+                    text = f.read()
+            except UnicodeDecodeError:
+                with open(file_path, "r", encoding="latin-1") as f:
+                    text = f.read()
+        else:
+            # 二进制格式：调用 extract_text() 提取文本
+            result = extract_text(file_path)
+            if not result.get("ok"):
+                return {"ok": False, "error": result.get("error", "文本提取失败")}
+            text = result["text"]
         source = os.path.basename(file_path)
     elif text:
         source = metadata.get("source", "直接输入") if metadata else "直接输入"
@@ -1668,7 +1877,79 @@ def _call_llm_api(messages: list, base_url: str = None, api_key: str = None, mod
     return resp.json()["choices"][0]["message"]["content"]
 
 
-def auto_classify(text: str) -> dict:
+def _extract_json_block(text: str) -> dict:
+    """
+    从 LLM 返回文本中提取并解析 JSON 对象（支持嵌套）。
+    
+    策略：
+      1. 先尝试直接 json.loads()（LLM 可能返回纯净 JSON）
+      2. 失败则找第一个 '{'，然后匹配花括号（计数深度），提取最外层 JSON
+      3. 对提取的块尝试 json.loads()
+    
+    返回:
+        dict — 解析成功
+        None — 无法提取/解析
+    """
+    text = text.strip()
+    
+    # 策略1：直接解析
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    
+    # 策略2：提取 JSON 块（匹配花括号）
+    start = text.find("{")
+    if start == -1:
+        return None
+    
+    depth = 0
+    in_string = False
+    escape_next = False
+    json_end = -1
+    
+    for i in range(start, len(text)):
+        ch = text[i]
+        
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == "\\":
+            escape_next = True
+            continue
+        if ch == '"' and not in_string:
+            in_string = True
+            continue
+        if in_string:
+            if ch == '"':
+                in_string = False
+            continue
+        
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                json_end = i + 1
+                break
+    
+    if json_end == -1:
+        return None
+    
+    json_str = text[start:json_end]
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        # 尝试修复常见错误：去掉尾部逗号
+        json_str = re.sub(r",\s*}", "}", json_str)
+        json_str = re.sub(r",\s*\]", "]", json_str)
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            return None
+
+
+def auto_classify(text: str, metadata: dict = None) -> dict:
     """
     使用 LLM 自动分析文本，推断分面字段。
     返回结构化的分类建议 dict，可直接传给 ingest() 的 metadata 参数。
@@ -1695,6 +1976,37 @@ def auto_classify(text: str) -> dict:
         KNOWLEDGE_TYPE_OPTIONS, TRUST_SCORE_LABELS
     )
 
+    # ── L1-L3 四层管道（简化版）──
+    # L1（模板默认）：如果 metadata 已提供值，优先使用
+    result = metadata.copy() if metadata else {}
+    
+    # L2（文件元数据）：无文件扩展名信息，跳过
+    
+    # L3（关键词匹配）：根据文本内容推断 domain
+    text_lower = text.lower()
+    keyword_domain_map = {
+        "齿轮|模数|强度|公差|机械设计": ["6"],
+        "ai|llm|模型|深度学习|神经网络": ["0"],
+        "标准|国标|iso|gb/t": ["0", "6"],
+        "公式|定理|数学": ["5"],
+        "程序|代码|python|javascript": ["0"],
+        "设计|ux|ui|排版": ["7"],
+    }
+    if "domain" not in result or not result["domain"]:
+        for kw_pattern, domains in keyword_domain_map.items():
+            if any(kw in text_lower for kw in kw_pattern.split("|")):
+                result["domain"] = domains
+                break
+    
+    # L4（LLM 推断）：只调用 LLM 推断 result 中缺失的字段
+    # 如果 result 已包含所有必要字段，跳过 LLM 调用
+    required_fields = ["content_type", "domain", "temporal_nature", "epistemic_status"]
+    missing_fields = [f for f in required_fields if f not in result or not result[f]]
+    if not missing_fields:
+        # 所有必要字段已确定，跳过 LLM
+        normalize_facet_values(result)
+        return {"ok": True, "classification": result}
+    
     api_key = os.environ.get("KB_LLM_API_KEY") or LLM_API_KEY
     if not api_key:
         return {"ok": False, "error": "未配置 LLM API Key，无法自动分类。请在引擎配置页面设置。"}
@@ -1770,35 +2082,9 @@ def auto_classify(text: str) -> dict:
         return {"ok": False, "error": f"LLM 调用失败: {e}"}
 
     # ── 解析 JSON ──
-    try:
-        # 兼容 LLM 可能输出的 ```json 包裹或前后多余文字
-        raw_clean = raw.strip()
-        if raw_clean.startswith("```"):
-            # 去掉 ```json 和结尾 ```
-            lines = raw_clean.split("\n")
-            # 去掉第一行 ``` 和最后一行 ```
-            json_lines = [l for l in lines if not l.strip().startswith("```")]
-            raw_clean = "\n".join(json_lines)
-        result = json.loads(raw_clean)
-    except json.JSONDecodeError:
-        # 尝试用正则提取 JSON 对象
-        import re
-        m = re.search(r'\{[^{}]*\}', raw, re.DOTALL)
-        if m:
-            try:
-                result = json.loads(m.group(0))
-            except json.JSONDecodeError:
-                return {"ok": False, "error": "LLM 返回格式无法解析", "raw_response": raw}
-        else:
-            return {"ok": False, "error": "LLM 返回格式无法解析", "raw_response": raw}
-
-    # ── 字段合法性校验 ──
-    valid_ct = set(CONTENT_TYPES.keys())
-    valid_domain = set(DOMAINS.keys())
-    valid_lifecycle = set(LIFECYCLE_STAGES.keys())
-    valid_temporal = set(TEMPORAL_NATURE.keys())
-    valid_epistemic = set(EPISTEMIC_STATUS.keys())
-    valid_ktype = set(KNOWLEDGE_TYPES.keys())
+    result = _extract_json_block(raw)
+    if result is None:
+        return {"ok": False, "error": "LLM 返回格式无法解析", "raw_response": raw}
 
     classification = {
         "content_type": result.get("content_type", "knowledge"),
@@ -1817,43 +2103,9 @@ def auto_classify(text: str) -> dict:
         "confidence": result.get("confidence", None),
     }
 
-    # 校验 content_type（非法值用默认）
-    if classification["content_type"] not in valid_ct:
-        classification["content_type"] = "knowledge"
+    # ── 枚举守卫：规范化分面字段值 ──
+    normalize_facet_values(classification)
 
-    # 校验 domain（过滤非法值）
-    if isinstance(classification["domain"], list):
-        classification["domain"] = [d for d in classification["domain"] if d in valid_domain]
-    else:
-        classification["domain"] = []
-
-    # 校验 lifecycle
-    if classification["lifecycle"] not in valid_lifecycle:
-        classification["lifecycle"] = "published"
-
-    # 校验 temporal_nature
-    if classification["temporal_nature"] not in valid_temporal:
-        classification["temporal_nature"] = "timeboxed"
-
-    # 校验 epistemic_status（L0/L1→L2 需要显式验证动作，LLM 输出可能用简写）
-    raw_ep = str(classification["epistemic_status"]).strip().lower()
-    ep_map = {"l0": "unverified", "l1": "substantiated", "l2": "corroborated"}
-    classification["epistemic_status"] = ep_map.get(raw_ep, classification["epistemic_status"])
-    if classification["epistemic_status"] not in valid_epistemic:
-        classification["epistemic_status"] = "unverified"
-
-    # 校验 trust_score（范围 1-5）
-    try:
-        ts = int(classification["trust_score"])
-        classification["trust_score"] = max(1, min(5, ts))
-    except (ValueError, TypeError):
-        classification["trust_score"] = 3
-
-    # 校验 knowledge_type
-    if classification["knowledge_type"] not in valid_ktype:
-        classification["knowledge_type"] = ""
-
-    # 校验 keywords（确保是 list of str）
     if not isinstance(classification["keywords"], list):
         classification["keywords"] = []
     classification["keywords"] = [str(k).strip()[:50] for k in classification["keywords"] if k]
@@ -1955,7 +2207,7 @@ def _dedup_chunks(raw_chunks: list) -> list:
     # 按 source 分组
     groups: dict[str, list] = {}
     for c in raw_chunks:
-        src = " / ".join(filter(None, [c.get("book", ""), c.get("chapter", ""), c.get("page", "")])) or c.get("source", "未知")
+        src = c.get("source", "未知") or "未知"
         groups.setdefault(src, []).append(c)
 
     result = []
@@ -2028,8 +2280,7 @@ def _build_synthesis_prompt(query: str, chunks: list, table_split_threshold: int
 
     for c in chunks:
         text = c["text"]
-        src_parts = [c.get("book", ""), c.get("chapter", ""), c.get("page", "")]
-        src = " / ".join(p for p in src_parts if p) or c.get("source", "未知")
+        src = c.get("source", "未知") or "未知"
 
         # 检测是否为管道表格
         pipe_lines = [l for l in text.split("\n") if l.strip().startswith("|")]
@@ -2359,8 +2610,7 @@ def _render_report_html(query: str, synthesis: str, chunks: list, output_dir: st
         else:
             ref_tag = f'<span class="ref-tag">[引用{orig_num}]</span>'
 
-        src_parts = [c.get("book", ""), c.get("chapter", ""), c.get("page", "")]
-        src = " / ".join(p for p in src_parts if p) or c.get("source", "未知")
+        src = c.get("source", "未知") or "未知"
 
         text_html = _format_evidence_text(c["text"])
         score = c.get("score", 0)

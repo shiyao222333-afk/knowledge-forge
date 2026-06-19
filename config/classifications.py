@@ -337,3 +337,100 @@ DOMAIN_MIGRATION_MAP = {
     "法律专利":   ["3"],    # 社会科学 → 法律
     "标准规范":   ["0", "6"],  # 总论(标准) + 应用科学
 }
+
+
+def normalize_facet_values(metadata: dict) -> dict:
+    """
+    枚举守卫：验证并规范化分面字段值。
+    
+    在 LLM 返回结果后、写入 Qdrant 前执行：
+        LLM 返回 → normalize_facet_values() → 严格枚举值 → 写入 Qdrant
+    
+    核心逻辑：
+        1. 单选枚举（content_type / temporal_nature / epistemic_status）
+           → 标准化空格/大小写/中英文 → 精确匹配 → fallback 默认值
+        2. 多选列表（domain）
+           → 逐项标准化 → 去重
+        3. 数值字段（trust_score）
+           → 确保在合法范围内
+    
+    返回：规范化后的 metadata（原地修改 + 返回）
+    """
+    # ── content_type：单选，15 种 ──
+    ct = metadata.get("content_type")
+    if ct:
+        ct_norm = ct.strip().lower().replace(" ", "_")
+        if ct_norm in CONTENT_TYPES:
+            metadata["content_type"] = ct_norm
+        else:
+            # 模糊匹配：去掉前缀（如 "📖 knowledge" → "knowledge"）
+            for valid_key in CONTENT_TYPES.keys():
+                if valid_key in ct_norm or ct_norm in valid_key:
+                    metadata["content_type"] = valid_key
+                    break
+            else:
+                metadata["content_type"] = "other"  # fallback
+    
+    # ── domain：多选列表，9 种 UDC 主类 ──
+    dom = metadata.get("domain")
+    if dom:
+        if isinstance(dom, str):
+            dom = [d.strip() for d in dom.split(",")]
+        elif not isinstance(dom, list):
+            dom = [str(dom)]
+        normalized = []
+        for d in dom:
+            d_norm = d.strip()
+            if d_norm in DOMAINS:
+                normalized.append(d_norm)
+        metadata["domain"] = list(dict.fromkeys(normalized))  # 去重保持顺序
+    
+    # ── temporal_nature：单选，3 种 ──
+    tn = metadata.get("temporal_nature")
+    if tn:
+        tn_norm = tn.strip().lower()
+        if tn_norm in TEMPORAL_NATURE:
+            metadata["temporal_nature"] = tn_norm
+        else:
+            # 模糊匹配
+            for valid_key in TEMPORAL_NATURE.keys():
+                if valid_key in tn_norm or tn_norm in valid_key:
+                    metadata["temporal_nature"] = valid_key
+                    break
+            else:
+                metadata["temporal_nature"] = "timeboxed"  # fallback
+    
+    # ── epistemic_status：单选，3 种 ──
+    es = metadata.get("epistemic_status")
+    if es:
+        es_norm = es.strip().lower()
+        if es_norm in EPISTEMIC_STATUS:
+            metadata["epistemic_status"] = es_norm
+        else:
+            # 模糊匹配
+            for valid_key in EPISTEMIC_STATUS.keys():
+                if valid_key in es_norm or es_norm in valid_key:
+                    metadata["epistemic_status"] = valid_key
+                    break
+            else:
+                metadata["epistemic_status"] = "unverified"  # fallback
+    
+    # ── trust_score：数值，0-5 ──
+    ts = metadata.get("trust_score")
+    if ts is not None:
+        try:
+            ts_int = int(ts)
+            metadata["trust_score"] = max(0, min(5, ts_int))
+        except (ValueError, TypeError):
+            metadata["trust_score"] = 3  # fallback 中等可信
+    
+    # ── knowledge_type：单选，11 种（仅 content_type="knowledge" 时有效）─┘
+    kt = metadata.get("knowledge_type")
+    if kt:
+        kt_norm = kt.strip().lower()
+        if kt_norm in KNOWLEDGE_TYPES:
+            metadata["knowledge_type"] = kt_norm
+        else:
+            metadata["knowledge_type"] = "concept"  # fallback
+    
+    return metadata

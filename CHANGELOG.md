@@ -10,6 +10,21 @@
 
 ## [Unreleased]
 
+### Fixed — 2026-06-19
+- 🔧 P1 问题修复（17项）：
+  - F1: `metadata.update()` 全量合并 AI 分类结果（替代选择性合并）
+  - F2: 添加 `_safe_slice_point()` 函数（中文字符切片保护）
+  - D2: 实现 `detect_encoding()` 函数（chardet + 兜底链）
+  - E1: 清理所有 `book/chapter/page` 废弃字段引用 + 删除死代码 `_source_to_meta()`
+  - E2: 实现 `extract_text()` 支持 .txt/.md/.json/.csv/.docx/.html/.srt/.pdf
+  - F4: 实现 `_extract_json_block()` 支持嵌套 JSON 提取
+  - C1: `CONTENT_TYPES` 实际 15 种（注释已正确）
+  - G1: 实现 `normalize_facet_values()` 枚举守卫函数（`config/classifications.py`）
+  - G2: `auto_classify()` 实现 L1-L3 简单规则 + 调用 `normalize_facet_values()`
+  - C2: `_ensure_collection()` 现创建 Payload Index（9 个分面 + 过滤字段）
+  - D1: `trust_score` 统一为 0-5 整数（UI + 后端）
+  - E4: `source_path` 存储原始文件名（已正确）
+
 ### Changed — 2026-06-19
 - 🔄 项目命名重构：Athanor → Citrinitas（代码内部全量改名）
   - main.py / run.py / run.bat：标题 / 打印 / 窗口名更新

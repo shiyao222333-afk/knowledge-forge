@@ -493,7 +493,7 @@ def page_ingest():
 
         # 置信度 + 关键词
         with ui.row().classes("w-full gap-4 mt-2"):
-            trust_score = ui.number(label="可信度 (0.0-1.0)", value=0.5, min=0.0, max=1.0, step=0.1).classes("w-1/3")
+            trust_score = ui.number(label="可信度 (0-5)", value=3, min=0, max=5, step=1).classes("w-1/3")
             keywords = ui.input(label="关键词（逗号分隔）", placeholder="如: 机器学习, 神经网络, 深度学习").classes("w-2/3")
 
         ui.separator()
@@ -529,12 +529,11 @@ def page_ingest():
                     "metadata_source": _meta_source_map.get(ingest_method, "manual"),
                 }
 
-                # ── 合并 AI 分类结果中的额外字段 ──
+                # ── 合并 AI 分类结果（全量字段）──
                 cls_result = STATE.get("classify_result", {}).get("classification", {})
                 if cls_result:
-                    for key in ("auto_summary", "is_personal", "title", "author", "udc_code"):
-                        if key in cls_result and key not in metadata:
-                            metadata[key] = cls_result[key]
+                    # 只填充用户未手动设置的字段（避免覆盖 UI 手动选择）
+                    metadata.update({k: v for k, v in cls_result.items() if k not in metadata})
 
                 # ── 置信度路由 ──
                 classify_result = STATE.get("classify_result", {})
@@ -643,7 +642,7 @@ def page_ingest():
                     if lc_val in lc_options:
                         lifecycle.set_value(lc_val)
                     ts = cls.get("trust_score", 3)
-                    trust_score.set_value(float(ts) if ts else 3.0)
+                    trust_score.set_value(int(ts) if ts else 3)
                     kw = cls.get("keywords", [])
                     if kw:
                         keywords.set_value(", ".join(kw if isinstance(kw, list) else [str(kw)]))
