@@ -431,12 +431,118 @@ def page_ingest():
 
         # ── 阶段二：AI 分类 + 确认 ──
         ui.markdown("## 阶段二：AI 分析与元数据")
-        ui.markdown("*点击「AI 分析」让 LLM 自动推断分类和标签，然后人工确认后摄入。*")
+        ui.markdown("*AI 自动推断分类和标签，请确认后摄入。*")
+
+        # 确认卡片（初始隐藏）
+        confirm_card = ui.card().classes("w-full").set_visibility(False)
+        confirm_result = {"ok": False, "metadata": {}}
 
         ai_cols = ui.row().classes("w-full gap-4")
         with ai_cols:
-            ai_btn = ui.button("🤖 AI 分析", on_click=lambda: None).props("color=teal")
+            ai_btn = ui.button("🤖 AI 分析", color="teal")
             ai_status = ui.label("等待分析...").classes("text-sm text-gray-500")
+
+        async def on_ai_analyze():
+            """AI 分析回调：调用 auto_classify，展示确认卡片"""
+            nonlocal ingest_content, ingest_method, ingest_source
+            if not ingest_content.strip():
+                ui.notify("⚠️ 没有内容可分析", type="negative")
+                return
+            ai_status.text = "AI 分析中..."
+            ai_btn.disable()
+
+            try:
+                # 准备元数据（传入文件元数据，让 AI 参考）
+                meta_for_ai = STATE.get("auto_metadata", {}) or {}
+                result = await asyncio.to_thread(
+                    kb_query.auto_classify,
+                    text=ingest_content[:3000],
+                    metadata=meta_for_ai if isinstance(meta_for_ai, dict) else None,
+                )
+                if not result.get("ok"):
+                    ui.notify(f"AI 分析失败: {result.get('error', '')}", type="negative")
+                    return
+
+                cls = result.get("classification", {})
+                conf = cls.get("confidence", {})
+                overall = conf.get("overall", 0.5) if isinstance(conf, dict) else 0.5
+
+                # 存储到 STATE
+                STATE["classify_result"] = result
+
+                # 展示确认卡片
+                with confirm_card:
+                    confirm_card.clear()
+                    with ui.column().classes("w-full gap-3"):
+                        ui.markdown(f"### ✅ AI 分析完成（置信度 {overall:.0%}）")
+
+                        # 文件元数据（如果有）
+                        auto_meta = STATE.get("auto_metadata", {}) or {}
+                        if auto_meta:
+                            ui.markdown("**📎 文件元数据（已自动提取）**")
+                            with ui.grid(columns=2).classes("w-full gap-2"):
+                                for k, v in auto_meta.items():
+                                    if v:
+                                        ui.label(f"{k}:").classes("font-bold")
+                                        ui.label(str(v)).classes("text-sm")
+
+                        # AI 分析结果
+                        ui.markdown("**🤖 AI 分析结果（请确认/修改）**")
+                        with ui.grid(columns=2).classes("w-full gap-2"):
+                            ai_content_type = ui.select(
+                                options=[o[0] for o in classifications.CONTENT_TYPE_OPTIONS],
+                                label="内容类型",
+                                value=cls.get("content_type", "knowledge"),
+                            ).classes("w-full")
+                            ai_domain = ui.select(
+                                options=[o[0] for o in classifications.DOMAIN_OPTIONS],
+                                label="领域",
+                                multiple=True,
+                                value=cls.get("domain", []),
+                            ).classes("w-full").props("use-chips")
+                            ai_temporal = ui.select(
+                                options=[o[0] for o in classifications.TEMPORAL_NATURE_OPTIONS],
+                                label="时效属性",
+                                value=cls.get("temporal_nature", "timeboxed"),
+                            ).classes("w-full")
+                            ai_epistemic = ui.select(
+                                options=[o[0] for o in classifications.EPISTEMIC_STATUS_OPTIONS],
+                                label="认知验证",
+                                value=cls.get("epistemic_status", "unverified"),
+                            ).classes("w-full")
+
+                        # 确认/取消按钮
+                        with ui.row().classes("w-full gap-2 mt-4"):
+                            def on_confirm():
+                                confirm_card.set_visibility(False)
+                                # 收集 AI 表单的值
+                                confirmed_meta = {
+                                    "content_type": ai_content_type.value,
+                                    "domain": list(ai_domain.value) if ai_domain.value else [],
+                                    "temporal_nature": ai_temporal.value,
+                                    "epistemic_status": ai_epistemic.value,
+                                }
+                                STATE["classify_result"] = {"ok": True, "classification": confirmed_meta}
+                                ui.notify("✅ 元数据已确认，可点击「摄入」", type="positive")
+                                ai_status.text = f"✅ 已确认（置信度 {overall:.0%}）"
+
+                            def on_cancel():
+                                confirm_card.set_visibility(False)
+                                STATE.pop("classify_result", None)
+                                ui.notify("已取消 AI 分析", type="info")
+
+                            ui.button("✅ 确认并入库", on_click=on_confirm, color="green")
+                            ui.button("取消", on_click=on_cancel, color="grey")
+
+                confirm_card.set_visibility(True)
+                ai_status.text = f"✅ 分析完成（置信度 {overall:.0%}），请确认元数据"
+
+            except Exception as ex:
+                ui.notify(f"AI 分析出错: {ex}", type="negative")
+            finally:
+                ai_btn.enable()
+
+        ai_btn.on_click(on_ai_analyze)
 
         # 四核心分面表单（简化版）
         with ui.row().classes("w-full gap-4 mt-4"):

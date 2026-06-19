@@ -1,6 +1,6 @@
 """
 KB Query Engine - 中文技术文档知识库问答系统
-版本: v0.4.5 — 分面分类 v5.1 (normalize_facet_values + L1-L3 pipeline)
+版本: v0.4.6 — AI分析确认卡片 + 元数据预填
 
 架构:
   摄入: 图片/文本 → PaddleOCR/PPStructureV3 → 分块嵌入 → Qdrant
