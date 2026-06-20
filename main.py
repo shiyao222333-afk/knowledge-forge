@@ -29,6 +29,7 @@ sys.path.insert(0, PROJECT_DIR)
 
 import kb_query
 from config import classifications
+from field_cfg import FIELD_DISPLAY_CFG, SOURCE_ICON, PANEL_VALUES
 from utils.file_handler import (
     detect_file_type, extract_text, extract_auto_metadata, detect_encoding,
     SIZE_LIMIT_MB, FORMAT_DISPLAY_NAMES,
