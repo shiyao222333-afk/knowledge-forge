@@ -336,7 +336,7 @@ Layer\ 3\ \(confidence\):\ field\ weight\ ×\ source\ confidence\ calc\ \ \ \ \ 
 | v0.4.0 | ✅ | Smart Ingestion | LLM auto-classification + two-phase ingestion pipeline |
 | v0.4.1 | ✅ | Faceted Classification v5.0 | UDC 9 main classes + NiceGUI SPA migration |
 | v0.4.5 | ✅ | Deep Ingestion | 8-format detection + Dead Letter Queue + confidence routing |
-| v0.5.0 | 🔮 | Watch Folder | Folder monitoring + auto-ingestion + batch processing |
+| v0.5.0 | ✅ | L2 Pipeline | auto_classify enhancement + normalize_facet_values |
 | v0.6.0 | ✅ | Card-style Result Panel | 3-layer parallel classification + config-driven UI + source badges + confidence bar |
 | v0.7.0 | 🔮 | Page Modularization | main.py page split (ingest/search/hub/manage/config) |
 | v1.0.0 | 🔮 | Production Ready | Mobile adaptation + WeChat Bot + knowledge graph |
