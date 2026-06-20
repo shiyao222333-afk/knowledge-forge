@@ -140,15 +140,15 @@ def build_advanced_panel(annotated: dict, classification: dict, container):
 
     container.clear()
     with container:
-        with ui.expansion("高级选项", icon="⚙️").classes("w-full"):
+        with ui.expansion("高级选项", icon="⚙️").classes("w-full") as exp:
             _render_group("知识属性", [
                 "lifecycle", "knowledge_type", "is_personal",
                 "trust_score", "project_source", "udc_code",
-            ], container)
+            ], exp)
             ui.separator()
-            _render_group("来源信息", ["source", "language", "origin.source_url"], container)
+            _render_group("来源信息", ["source", "language", "origin.source_url"], exp)
             ui.separator()
-            _render_group("时间戳", ["timeline.published", "timeline.effective"], container)
+            _render_group("时间戳", ["timeline.published", "timeline.effective"], exp)
 
 
 def edit_field_dialog(field_name: str):

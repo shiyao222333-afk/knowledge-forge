@@ -626,7 +626,7 @@ def page_ingest():
                 result = await asyncio.to_thread(
                     kb_query.classify_document,
                     ingest_content,
-                    meta_for_ai if isinstance(meta_for_ai, dict) else None,
+                    STATE.get("auto_metadata") if isinstance(STATE.get("auto_metadata"), dict) else None,
                     _proj,
                 )
                 if result and result.get("ok"):
