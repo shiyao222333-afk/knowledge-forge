@@ -8,19 +8,13 @@
 
 ---
 
-## [Unreleased]
+## [v0.5.1] - 2026-06-20
 
 ### Fixed
-- 🔧 P2/P3 问题修复批次（待规划）：
-  - F8: `source_path` 未入库
-  - D5: 图片存绝对路径
-  - E3: XSS 防护复核
-  - C1-C3: `schema.md` 修正
-  - C6-C11: 僵尸文件清理
-  - N1-N5: `.env` 清理
-  - U1: `ingest_ui.py` 僵尸文件
-  - D6-D7: `ext_` 字段 + `facet_filter` 静默忽略
-  - S5: `get_facet_stats()` 全量 scroll
+- 🔧 S5: `get_facet_stats()` 全量 scroll 优化
+  - 移除 `all_points = []` 内存积累，改为逐批聚合计数
+  - 内存占用与知识库规模解耦（不再随点数增长）
+- 🔧 G2 遗留语法错误修复：`keyword_domain_map` 后悬空重复字典片段清除
 
 ---
 
