@@ -46,6 +46,7 @@ def _save_env(kv: dict):
         f.writelines(lines)
 
 
+@ui.page("/config")
 def page_config():
     """引擎配置页面（/config）—— 配置底层引擎参数"""
     from main import build_left_drawer

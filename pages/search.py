@@ -15,6 +15,7 @@ from utils.ui_shared import render_chunk_card
 from utils.state import STATE
 
 
+@ui.page("/search")
 def page_search():
     """智能检索页面（/search）—— 语义搜索 + AI 问答"""
     from main import build_left_drawer

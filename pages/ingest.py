@@ -24,6 +24,7 @@ from utils.file_handler import (
 from utils.state import STATE
 
 
+@ui.page("/")
 def page_ingest():
     """文档注入页面（/）—— 两阶段智能摄入：内容准备 → AI 分析 + 人工确认 → 入库"""
     from main import build_left_drawer

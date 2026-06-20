@@ -11,6 +11,7 @@ import kb_query
 from utils.state import STATE
 
 
+@ui.page("/hub")
 def page_hub():
     """知识中枢页面（/hub）—— 知识库集合的指挥中心"""
     from main import build_left_drawer, refresh_system_state, set_active_collection
