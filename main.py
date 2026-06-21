@@ -49,11 +49,11 @@ def _save_env(key: str, val: str):
 # ── 启动回调 ─────────────────────────────
 @app.on_startup
 def startup():
-    print("[启动] 正在刷新系统状态…", flush=True)
-    refresh_system_state()
+    """启动回调：只做轻量操作，不阻塞事件循环。"""
+    print("[启动] startup 回调开始（事件循环线程）", flush=True)
     threading.Thread(target=_auto_shutdown, daemon=True).start()
     app.timer(10.0, _status_tick)
-    print(f"[启动] 完成 — stats={STATE.get('stats')}", flush=True)
+    print(f"[启动] startup 回调完成 — STATE 已有 stats={STATE.get('stats')}", flush=True)
 
 def _auto_shutdown():
     CHECK = 3
@@ -71,6 +71,18 @@ def _auto_shutdown():
             if idle >= IDLE_MAX:
                 print("\n[Citrinitas] 浏览器已关闭，自动退出。")
                 os._exit(0)
+
+
+@app.get("/health")
+def _health_check():
+    """绕过 NiceGUI 路由，直接测试 FastAPI 层"""
+    from fastapi.responses import JSONResponse
+    return JSONResponse({
+        "status": "ok",
+        "qdrant_online": STATE["qdrant_online"],
+        "stats": STATE.get("stats"),
+        "pid": os.getpid(),
+    })
 
 @app.get("/reports/{filename}")
 def _serve_report(filename: str):
@@ -90,11 +102,15 @@ if __name__ in {"__main__", "__mp_main__"}:
     except Exception as _e:
         print(f"[启动] ⚠️ Qdrant 未启动: {_e}", flush=True)
 
+    # 在事件循环启动前刷新状态（阻塞主线程没问题，此时事件循环还没启动）
+    print("[启动] 刷新系统状态（ui.run 前）…", flush=True)
+    refresh_system_state()
+    print(f"[启动] 状态刷新完成 — stats={STATE.get('stats')}", flush=True)
+
     ui.run(
         title="Citrinitas · 熔知",
         host="0.0.0.0",
         port=8080,
         reload=False,
         show=False,
-        storage_secret="citrinitas-mindforge-secret",
     )

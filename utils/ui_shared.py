@@ -8,6 +8,7 @@ main.py 和 pages/*.py 都从此模块导入共享函数。
 from nicegui import ui, app
 import requests
 import kb_query
+import threading
 from utils.state import STATE
 
 # ═══════════════════════════════════════════
@@ -77,30 +78,35 @@ _GLOBAL_TIMER = None    # app.timer 只创建一次
 
 
 def _status_tick():
-    """全局状态刷新回调（由 app.timer 每10秒触发，独立于任何UI元素）。"""
+    """全局状态刷新回调（由 app.timer 每60秒触发，独立于任何UI元素）。
+    ⚠️ 在后台线程调用 refresh_system_state()，避免阻塞事件循环。"""
     w = _STATUS_WIDGETS
     if not w:
         return
-    try:
-        refresh_system_state()
-        badge = w.get("badge")
-        if badge is None:
-            return
-        if STATE["qdrant_online"]:
-            badge.set_text("在线")
-            badge.props("color=green")
-            stats = STATE.get("stats", {})
-            pts = w.get("points")
-            if pts:
-                pts.set_text(f"文档块: {stats.get('points', '--')}")
-            dm = w.get("dim")
-            if dm:
-                dm.set_text(f"维度: {stats.get('dim', '--')}")
-        else:
-            badge.set_text("离线")
-            badge.props("color=red")
-    except Exception:
-        pass  # 控件临时不可用（抽屉重建中），静默跳过
+    # 在后台线程执行，不阻塞事件循环
+    def _do_refresh():
+        try:
+            refresh_system_state()
+            # 用 ui.update() 或直接在 UI 线程更新控件
+            # NiceGUI 的 ui.label.set_text() 必须在事件循环线程调用
+            # 所以用 ui.timer(0.1, ..., once=True) 回到事件循环线程
+            def _update_ui():
+                try:
+                    if STATE["qdrant_online"]:
+                        w["badge"].set_text("在线")
+                        w["badge"].props("color=green")
+                        stats = STATE.get("stats", {})
+                        w["points"].set_text(f"文档块: {stats.get('points', '--')}")
+                        w["dim"].set_text(f"维度: {stats.get('dim', '--')}")
+                    else:
+                        w["badge"].set_text("离线")
+                        w["badge"].props("color=red")
+                except Exception:
+                    pass
+            ui.timer(0.1, _update_ui, once=True)
+        except Exception:
+            pass
+    threading.Thread(target=_do_refresh, daemon=True).start()
 
 
 def build_left_drawer():
@@ -145,8 +151,8 @@ def build_left_drawer():
             dim_label = ui.label(_dim_text).classes("text-sm")
 
             def _update_status():
-                """手动刷新按钮回调：刷新状态并更新 UI。"""
-                refresh_system_state()
+                """手动刷新按钮回调：只更新 UI，不调用 refresh_system_state（避免阻塞事件循环）"""
+                # 注意：这里直接读 STATE，不重新请求 Qdrant（避免阻塞）
                 if STATE["qdrant_online"]:
                     status_badge.set_text("在线")
                     status_badge.props("color=green")
@@ -163,11 +169,13 @@ def build_left_drawer():
             _STATUS_WIDGETS.update(badge=status_badge, points=points_label, dim=dim_label)
 
             # 全局定时器（app.timer 独立于UI，只创建一次）
+            # 注意：_status_tick 里会调用 refresh_system_state()，
+            # 为避免阻塞事件循环，改为每60秒刷新一次（降低频率）
             if _GLOBAL_TIMER is None:
-                _GLOBAL_TIMER = app.timer(10.0, _status_tick)
+                _GLOBAL_TIMER = app.timer(60.0, _status_tick)
 
-            # 关键：页面加载后延迟 0.5 秒再更新一次状态（确保 STATE["stats"] 已就绪）
-            ui.timer(0.5, _update_status, once=True)
+            # 页面加载后不再自动触发 _update_status（避免阻塞）
+            # ui.timer(0.5, _update_status, once=True)  # 已禁用
 
         ui.separator()
 

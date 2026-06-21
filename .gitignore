@@ -31,3 +31,6 @@ katex_out_*.json
 
 # OCR 临时文件
 *_ocr_tmp.txt
+
+# WorkBuddy 内部目录
+.workbuddy/
