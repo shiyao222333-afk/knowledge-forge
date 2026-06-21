@@ -74,7 +74,7 @@ def page_ingest():
 
                 up_result = ui.label("").classes("text-sm")
 
-                def on_upload(e):
+                async def on_upload(e):
                     nonlocal ingest_content, ingest_source, ingest_method
                     temp_path = None
                     try:
@@ -92,7 +92,7 @@ def page_ingest():
                             tf.write(file_bytes)
                             temp_path = tf.name
 
-                        # 检测文件类型
+                        # 检测文件类型（轻量操作，同步执行）
                         file_type = detect_file_type(temp_path)
                         STATE["file_info"] = file_type
                         ext_label = ".".join(file_type.get("extensions", ["?"]))
@@ -108,8 +108,8 @@ def page_ingest():
                         ui.badge(f"T{tier}: {tier_name}", color=tier_badge)
                         ui.badge(meta_badge, color="teal" if has_meta else "blue")
 
-                        # 提取文本
-                        extract_result = extract_text(temp_path)
+                        # 提取文本（后台线程执行，避免阻塞事件循环）
+                        extract_result = await asyncio.to_thread(extract_text, temp_path)
                         if isinstance(extract_result, dict):
                             text = extract_result.get("text", "")
                         else:
@@ -118,8 +118,8 @@ def page_ingest():
                             ui.notify(f"文本较长 ({len(text)} 字)，已截取前 5000 字发送给 AI 分析", type="warning")
                             text = text[:5000]
 
-                        # 提取自动元数据
-                        auto_meta_result = extract_auto_metadata(temp_path, file_type)
+                        # 提取自动元数据（后台线程执行）
+                        auto_meta_result = await asyncio.to_thread(extract_auto_metadata, temp_path, file_type)
                         auto_meta = auto_meta_result.get("flat", {}) if isinstance(auto_meta_result, dict) else {}
                         STATE["auto_metadata"] = auto_meta
 
@@ -162,7 +162,7 @@ def page_ingest():
 
                 ocr_result_label = ui.label("").classes("text-sm")
 
-                def on_ocr(e):
+                async def on_ocr(e):
                     nonlocal ingest_content, ingest_source, ingest_method
                     temp_path = None
                     try:
@@ -176,7 +176,7 @@ def page_ingest():
                             tf.write(file_bytes)
                             temp_path = tf.name
 
-                        result = kb_query.ocr_image(temp_path)
+                        result = await asyncio.to_thread(kb_query.ocr_image, temp_path)
                         text = result.get("ocr_text", "")
                         content_text.set_value(text)
                         ingest_content = text
@@ -341,7 +341,7 @@ def page_ingest():
                     PANEL_VALUES.clear()
                     result_container.clear()
                     advanced_container.clear()
-                    refresh_system_state()
+                    await asyncio.to_thread(refresh_system_state)
                 else:
                     ui.notify(f"❌ 摄入失败: {result.get('error', '?')}", type="negative")
             except Exception as ex:
