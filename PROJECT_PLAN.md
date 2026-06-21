@@ -2,16 +2,16 @@
 
 > 本文档管理功能路线图和设计决策。版本变更记录见 `CHANGELOG.md`，Bug 跟踪改用 GitHub Issues。
 
-最后更新: 2026-06-21 (v0.7.0 B1-B4 摄入管线重构 — 管道化 + 批量 + 统一返回值 + Nigredo 预存储钩子)
+最后更新: 2026-06-21 (v0.7.0 摄入管线重构完成 — B1-B4 全部验收通过，进入 v0.8.0 规划)
 
 ---
 
 ## 当前状态
 
-- 当前版本：**v0.7.0-dev ✅ P0/P1/P2 修复完成**（代码质量重构 II）
-- 下一个版本：**v0.7.0 B1-B3**（ingest() 管道化 / 批量摄入 / 统一返回值）
+- 当前版本：**v0.7.0 ✅ 已完成**（摄入管线重构 — B1-B4 全部验收通过）
+- 下一个版本：**v0.8.0**（搜索重构 + 知识关系网）
 - 活跃 Bug：**0**
-- Git 状态：main 分支，T1-T5 全部完成 ✅，B1-B3 待实施
+- Git 状态：main 分支，v0.7.0 已提交 + 已推送
 
 ---
 
@@ -51,7 +51,7 @@
 | v0.5.1 | ✅ | 框架 | 内存优化 | get_facet_stats 修复 |
 | v0.6.0 | ✅ | 框架 | 卡片式结果面板 | 三层管道 + 配置驱动 UI + 来源徽章 |
 | v0.6.1 | ✅ | 框架 | 代码质量重构 I | main.py 页面拆分（1213行→348行） |
-| v0.7.0 | 🔮 | 框架 | 摄入执行重构 | 阶段三 + kb_query.py 拆分 + 统一返回值格式 |
+| v0.7.0 | ✅ | 框架 | 摄入执行重构 | 阶段三 B1-B4 — ingest() 管道化 + 批量摄入 + 统一返回值 + Nigredo 钩子接口 |
 | v0.8.0 | 🔮 | 墙体 | 搜索重构 + 知识关系网 | 搜索流程重构 + NetworkX + Plotly |
 | v0.9.0 | 🔮 | 装修 | 知识库管理重构 + 审核队列 | 阶段四 + hub/manage 优化 |
 | v1.0.0 | 🔮 | 交付 | 生产就绪 | 阶段五 + 代码重构收尾 + YAML 配置化 |
@@ -60,7 +60,9 @@
 
 ---
 
-## 二、当前版本：v0.6.0 ✅ 已完成（2026-06-21 验收通过）
+## 二、当前版本
+
+### v0.6.0 ✅ 已完成（2026-06-21 验收通过）
 
 ### 目标
 
@@ -74,7 +76,7 @@
 |:----:|------|:----:|:----:|---------|
 | 一 | 内容准备 | ✅ 完成 | v0.4.0–v0.5.1 | 文件上传 / OCR / 手动输入 + 基础 auto_classify + 入库检索 |
 | 二 | 元数据标注 | ✅ 已完成 | v0.6.0 | 三层并行管道 + 规则引擎 + 来源徽章 + 置信度路由 |
-| 三 | 摄入执行重构 | 📋 待开始 | v0.7.0 | ingest() 管道化（步骤可配置/可跳过）+ 批量摄入 |
+| 三 | 摄入执行重构 | ✅ 完成 | v0.7.0 | ingest() 管道化（10 步可配置/可跳过）+ 批量摄入 + Nigredo 钩子接口 |
 | 四 | 审核队列 | 📋 待开始 | v0.9.0 | 置信度路由落地（待审/死信队列 UI）+ 知识中枢审核入口 |
 | 五 | 无 UI 管线 | 📋 待开始 | v1.0.0 | 守望文件夹 + 文件夹监控 + YAML 配置化 + 全自动摄入 |
 
@@ -105,6 +107,56 @@
 **✅ 核心管道验收通过**：摄入 → auto_classify → normalize → 入库 → 检索 → 分面统计
 
 **⚠️ UI 交互问题 4 项（归属阶段二）**：I016/I016a（按钮双重绑定+重复下拉菜单）、I017（L2 管道未传 metadata）、I018（死代码）→ **已在 v0.6.0 重构中解决**
+
+---
+
+### v0.7.0 ✅ 已完成（2026-06-21 验收通过）
+
+### 目标
+
+重构摄入执行管线：把 `ingest()` 从硬编码流水线拆成可配置管道，支持批量摄入，统一返回值格式，预留 Nigredo（馏析）预存储钩子接口。
+
+### 做了什么
+
+| 任务 | 内容 | 结果 |
+|------|------|------|
+| B1 | `ingest()` 管道化 | 拆成 10 个独立步骤（`_step_xxx(state)`），新增 `skip_steps` 参数支持跳过步骤 |
+| B2 | `ingest_batch()` 批量摄入 | 新增函数，多个文件/文本依次走管道，返回汇总统计 |
+| B3 | 统一返回值格式 | `build_payloads()` 返回值从 `tuple` 改为 `dict`（含 `ok/chunks/doc_id/content_hash` 等键） |
+| B4 | Nigredo 钩子接口 | 新增 `config/hooks.py`（钩子注册表）+ `docs/pre_store_hook_spec.md`（合约规格）|
+
+### 新增文件
+
+| 文件 | 作用 |
+|------|------|
+| `config/hooks.py` | 预存储钩子注册表（`register_hook()` / `get_hooks()`）|
+| `docs/pre_store_hook_spec.md` | 钩子合约规格（给未来接入的程序看的）|
+| `ingest_pipeline.py` | `build_payloads()` 独立模块（B3 从 `kb_query.py` 迁出）|
+
+### 管线步骤（10 步）
+
+```
+1. qdrant_check → 2. read_content → 3. dedup → 4. extract_images → 5. chunk
+→ 6. embed → 7. pre_store_hooks → 8. build_payloads → 9. write_qdrant → 10. log_ingest
+```
+
+可跳过的步骤：`dedup`、`images`、`log_ingest`
+
+### 验证结果
+
+- ✅ 语法检查全部通过
+- ✅ 导入链完整（无 NameError）
+- ✅ 真实入库测试通过（Qdrant 在线，1 块文本成功入库）
+- ✅ 钩子注册/获取正常
+- ✅ `build_payloads()` 返回 dict 格式正确
+
+### Nigredo 接口（远期规划）
+
+馏析（Nigredo）远期任务已记录在 `D:\nigredo\docs\citrinitas-hook-interface.md`：
+- 在馏析里实现钩子函数
+- 从包裹里读出原始内容，补充视频元数据
+- （可选）用结构化笔记替换原始字幕
+- 把处理完的包裹传回熔知，继续入库流程
 
 ---
 
@@ -321,7 +373,7 @@ pages/
 
 **验收标准**：拆分后功能不变，每个页面模块可独立编辑。
 
-#### 第二步：`kb_query.py` 渐进式拆分（v0.7.0，中风险）
+#### 第二步：`kb_query.py` 渐进式拆分（v0.7.0，✅ 已完成）
 
 不一次性大拆，随版本推进迁移：
 
@@ -384,4 +436,79 @@ kb_query.py (搜索相关函数) → search_engine.py 独立模块
 - ❌ 重写测试框架（当前阶段先手动验收，后续补单元测试）
 - ❌ 引入类型检查（mypy/pyright）——有成本，收益低
 
-### 当前版本（v0.6.0）验收通过后再启动第一步
+### 当前版本（v0.7.0）验收通过，进入 v0.8.0 规划
+
+---
+
+## 九、v0.8.0 规划（搜索重构 + 知识关系网）
+
+> v0.8.0 是"墙体"层——在框架完成后，加搜索重构和知识关系网。
+
+### 目标
+
+1. **搜索流程重构**：把搜索相关函数从 `kb_query.py` 拆出为独立模块 `search_engine.py`
+2. **知识关系网**：从已有 `relations` 字段建图（NetworkX），Plotly 可视化
+
+### 任务清单
+
+| # | 任务 | 内容 | 优先级 |
+|---|------|------|:--:|
+| C1 | `search_engine.py` 独立 | 把 `search()`、`answer()`、`get_facet_stats()` 从 `kb_query.py` 拆出 | MVP |
+| C2 | 知识关系网后端 | NetworkX 内存图，从 Qdrant `relations` 字段建图 | MVP |
+| C3 | 知识关系网可视化 | Plotly 力导向图，NiceGUI `ui.plotly` 渲染 | MVP |
+| C4 | 节点着色 | domain 颜色 + epistemic_status 边框线型 | 锦上添花 |
+| C5 | 边着色 | relation_type 颜色区分 | 锦上添花 |
+
+### C1 详细方案
+
+**改动文件**：`kb_query.py` → `search_engine.py`
+
+**当前状态**：`search()`、`answer()`、`get_facet_stats()` 在 `kb_query.py` 里，和摄入逻辑混在一起。
+
+**改造后**：
+```
+search_engine.py（独立模块）
+├── search()              向量检索 + 分面过滤
+├── answer()              LLM 合成 + 引用编号
+├── get_facet_stats()     分面统计
+└── _render_report_html() HTML 报告渲染
+```
+
+**调用方更新**：`pages/search.py` 的导入从 `kb_query` 改为 `search_engine`
+
+### C2 详细方案
+
+**新增文件**：`knowledge_graph.py`
+
+**数据来源**：Qdrant 每条记录的 `relations` 字段（格式：`[{"type": "...", "doc_id": "..."}]`）
+
+**建图逻辑**：
+```python
+G = nx.DiGraph()
+for point in all_points:
+    doc_id = point["id"]
+    G.add_node(doc_id, **point["payload"])  # 节点 = 文档
+    for rel in point["payload"].get("relations", []):
+        G.add_edge(doc_id, rel["doc_id"], type=rel["type"])  # 边 = 关系
+```
+
+**同步策略**：惰性同步——dirty 标记 → 打开图谱页按需重建
+
+### C3 详细方案
+
+**可视化**：Plotly `go.Figure()` + `go.Scatter()`（力导向布局）
+
+**渲染**：NiceGUI `ui.plotly(fig)`
+
+**交互**：
+- 点击节点 → 显示文档详情（标题、来源、分类）
+- 拖拽节点 → 重新布局
+- 筛选：按 domain/epistemic_status 筛选显示的节点
+
+### 验收标准
+
+- [ ] C1: 搜索+问答功能不变，分面统计接口不变
+- [ ] C2: 从 Qdrant 成功建图，节点数 = 文档数，边数 = relations 总数
+- [ ] C3: 图谱页渲染成功，节点可点击，边可区分类型
+
+---
