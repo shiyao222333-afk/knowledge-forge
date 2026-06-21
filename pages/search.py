@@ -11,7 +11,7 @@ import asyncio
 from nicegui import ui
 
 import kb_query
-from utils.ui_shared import render_chunk_card
+from utils.ui_shared import render_chunk_card, refresh_system_state
 from utils.state import STATE
 from utils.ui_shared import build_left_drawer
 

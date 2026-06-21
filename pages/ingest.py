@@ -22,7 +22,7 @@ from utils.file_handler import (
     SIZE_LIMIT_MB, FORMAT_DISPLAY_NAMES,
 )
 from utils.state import STATE
-from utils.ui_shared import build_left_drawer
+from utils.ui_shared import build_left_drawer, refresh_system_state
 
 
 @ui.page("/")

@@ -36,15 +36,19 @@ def refresh_system_state():
 
         if STATE["qdrant_online"]:
             try:
-                resp = requests.get(
-                    f"{kb_query.QDRANT_URL}/collections/{STATE['active_collection']}",
-                    timeout=3,
-                )
+                url = f"{kb_query.QDRANT_URL}/collections/{STATE['active_collection']}"
+                resp = requests.get(url, timeout=10)
                 if resp.status_code == 200:
-                    data = resp.json()
-                    cfg = data.get("result", {}).get("config", {}).get("params", {}).get("vectors", {})
-                    pts = data.get("result", {}).get("points_count", 0)
-                    STATE["stats"] = {"points": pts, "dim": cfg.get("size", "?"), "collection": STATE["active_collection"]}
+                    data = resp.json().get("result", {})
+                    cfg = data.get("config", {}).get("params", {}).get("vectors", {})
+                    pts = data.get("points_count", 0)
+                    STATE["stats"] = {
+                        "points": pts,
+                        "dim": cfg.get("size", "?"),
+                        "collection": STATE["active_collection"],
+                    }
+                else:
+                    STATE["stats"] = {}
             except Exception:
                 STATE["stats"] = {}
         else:
@@ -68,8 +72,8 @@ def set_active_collection(name: str):
 # 左侧抽屉（所有页面共用）
 # ═══════════════════════════════════════════
 
-_STATUS_WIDGETS = {}   # 状态栏控件引用（供 app.timer 回调更新）
-_GLOBAL_TIMER = None   # app.timer 只创建一次
+_STATUS_WIDGETS = {}   # 状态栏控件引用（供 _status_tick 回调更新）
+_GLOBAL_TIMER = None    # app.timer 只创建一次
 
 
 def _status_tick():
@@ -101,7 +105,20 @@ def _status_tick():
 
 def build_left_drawer():
     """构建左侧导航抽屉（所有页面共用）。"""
-    global _GLOBAL_TIMER
+    global _GLOBAL_TIMER, _STATUS_WIDGETS
+
+    # startup() 已经填好了 STATE["stats"]，直接读取，不再重复请求 Qdrant
+    if STATE.get("qdrant_online"):
+        _badge_text = "在线"
+        _badge_color = "green"
+    else:
+        _badge_text = "离线"
+        _badge_color = "red"
+
+    _stats = STATE.get("stats", {})
+    _points_text = f"文档块: {_stats.get('points', '--')}"
+    _dim_text = f"维度: {_stats.get('dim', '--')}"
+
     with ui.left_drawer(value=True, fixed=False, bordered=True).classes("bg-gray-900 text-white") as drawer:
         with ui.column().classes("w-full items-center p-4"):
             ui.markdown("## 🏭 Citrinitas")
@@ -120,16 +137,15 @@ def build_left_drawer():
 
         ui.separator()
 
-        # 系统状态
+        # 系统状态（用上面计算好的值初始化）
         with ui.column().classes("w-full px-4"):
             ui.markdown("### 📊 系统状态")
-            _initial = "在线" if STATE["qdrant_online"] else "离线"
-            _color   = "green" if STATE["qdrant_online"] else "red"
-            status_badge = ui.badge(_initial, color=_color)
-            points_label = ui.label("文档块: --").classes("text-sm")
-            dim_label = ui.label("维度: --").classes("text-sm")
+            status_badge = ui.badge(_badge_text, color=_badge_color)
+            points_label = ui.label(_points_text).classes("text-sm")
+            dim_label = ui.label(_dim_text).classes("text-sm")
 
             def _update_status():
+                """手动刷新按钮回调：刷新状态并更新 UI。"""
                 refresh_system_state()
                 if STATE["qdrant_online"]:
                     status_badge.set_text("在线")
@@ -143,11 +159,15 @@ def build_left_drawer():
 
             ui.button("🔄 刷新", on_click=_update_status).props("flat dense").classes("text-xs")
 
-            # 全局定时器（app.timer 独立于UI，只创建一次）
-            global _STATUS_WIDGETS, _GLOBAL_TIMER
+            # 注册控件引用（供 _status_tick 定时器使用）
             _STATUS_WIDGETS.update(badge=status_badge, points=points_label, dim=dim_label)
+
+            # 全局定时器（app.timer 独立于UI，只创建一次）
             if _GLOBAL_TIMER is None:
                 _GLOBAL_TIMER = app.timer(10.0, _status_tick)
+
+            # 关键：页面加载后延迟 0.5 秒再更新一次状态（确保 STATE["stats"] 已就绪）
+            ui.timer(0.5, _update_status, once=True)
 
         ui.separator()
 
@@ -172,7 +192,7 @@ def build_left_drawer():
         ui.separator()
         with ui.column().classes("w-full px-4"):
             ui.link("🔗 GitHub", "https://github.com/shiyao222333-afk/citrinitas").classes("text-xs text-blue-300")
-            ui.button("⏻ 关机", on_click=lambda: os._exit(0)).props("flat dense color=red").classes("text-xs mt-2")
+            ui.button("⏻ 关机", on_click=lambda: __import__("os")._exit(0)).props("flat dense color=red").classes("text-xs mt-2")
 
         return drawer
 
