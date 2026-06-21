@@ -5,6 +5,8 @@ Citrinitas · 熔知 — 知识中枢页面
 从 main.py 拆分出来以降低主文件复杂度。
 """
 
+import asyncio
+
 from nicegui import ui
 
 import kb_query
@@ -43,28 +45,34 @@ def page_hub():
                 ui.markdown("### 🔧 操作")
                 new_col_name = ui.input(label="新知识库名称", placeholder="输入名称...").classes("mb-2")
 
-                def create_col():
+                async def create_col():
                     name = (new_col_name.value or "").strip()
                     if not name:
                         ui.notify("请输入名称", type="warning")
                         return
                     try:
-                        kb_query.create_collection(name)
+                        await asyncio.to_thread(kb_query.create_collection, name)
                         ui.notify(f"✅ 知识库「{name}」已创建", type="positive")
-                        refresh_system_state()
-                        new_col_name.set_value("")
+                        # 在后台线程刷新状态，完成后更新 UI
+                        async def _after_create():
+                            await asyncio.to_thread(refresh_system_state)
+                            new_col_name.set_value("")
+                        asyncio.ensure_future(_after_create())
                     except Exception as ex:
                         ui.notify(f"创建失败: {ex}", type="negative")
 
-                ui.button("➕ 创建知识库", on_click=create_col).props("color=blue").classes("mb-2")
+                ui.button("➕ 创建知识库", on_click=lambda: asyncio.ensure_future(create_col())).props("color=blue").classes("mb-2")
 
                 # 清空集合（带确认对话框）
-                def do_clear_collection():
+                async def do_clear_collection():
                     try:
-                        result = kb_query.clear_collection(STATE["active_collection"])
+                        result = await asyncio.to_thread(
+                            kb_query.clear_collection,
+                            STATE["active_collection"],
+                        )
                         if result.get("ok"):
                             ui.notify(f"✅ 已清空 {result.get('deleted', 0)} 条", type="positive")
-                            refresh_system_state()
+                            await asyncio.to_thread(refresh_system_state)
                         else:
                             ui.notify(f"清空失败: {result.get('error', '?')}", type="negative")
                     except Exception as ex:
@@ -80,7 +88,10 @@ def page_hub():
                             ui.button("取消", on_click=clear_dialog.close).props("flat")
                             ui.button(
                                 "确认清空",
-                                on_click=lambda: [do_clear_collection(), clear_dialog.close()],
+                                on_click=lambda: [
+                                    asyncio.ensure_future(do_clear_collection()),
+                                    clear_dialog.close(),
+                                ],
                             ).props("color=red")
 
                 clear_btn = ui.button("🗑️ 清空当前库").props("color=red flat")
@@ -89,8 +100,7 @@ def page_hub():
 
                 def on_clear_click():
                     clear_detail.set_text(
-                        f"知识库「{STATE['active_collection']}」中的所有数据将"
-                        f"被删除，此操作不可撤销。"
+                        f"知识库「{STATE['active_collection']}」中的所有数据将被删除，此操作不可撤销。"
                     )
                     clear_dialog.open()
 
@@ -103,4 +113,12 @@ def page_hub():
             with ui.row().classes("w-full gap-2"):
                 for c in collections:
                     color = "green" if c == current else "grey"
-                    ui.button(c, on_click=lambda c=c: set_active_collection(c)).props(f"color={color} flat")
+                    ui.button(
+                        c,
+                        on_click=lambda c=c: asyncio.ensure_future(_set_active_collection(c)),
+                    ).props(f"color={color} flat")
+
+    async def _set_active_collection(collection_name: str):
+        """异步切换集合。"""
+        set_active_collection(collection_name)
+        ui.notify(f"✅ 已切换到 {collection_name}", type="positive")
