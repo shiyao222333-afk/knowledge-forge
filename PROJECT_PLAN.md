@@ -9,9 +9,9 @@
 ## 当前状态
 
 - 当前版本：**v0.6.1 ✅**（代码质量重构 I — main.py 页面拆分）
-- 下一个版本：**v0.7.0 🔮**（摄入执行重构 + kb_query.py 拆分）
+- 下一个版本：**v0.7.0 🔄**（摄入执行重构 + kb_query.py 拆分）
 - 活跃 Bug：**0**
-- Git 状态：main 分支，已推送 GitHub
+- Git 状态：main 分支，A1 doc_manager.py 完成，A2 qdrant_client.py 进行中
 
 ---
 
