@@ -13,7 +13,7 @@ echo.
 
 REM --- Step 1: Clean up stale processes ---
 echo [1/4] Cleaning up stale processes...
-for /f "tokens=5" %%a in ('netstat -ano 2^>NUL ^| findstr "127.0.0.1:8080" ^| findstr "LISTENING"') do (
+for /f "tokens=5" %%a in ('netstat -ano 2^>NUL ^| findstr ":8080 " ^| findstr "LISTENING"') do (
     echo   Killing old process on port 8080 [PID %%a]
     taskkill /PID %%a /F 2>NUL
     timeout /t 2 /nobreak > nul
