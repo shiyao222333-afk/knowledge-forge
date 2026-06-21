@@ -438,6 +438,7 @@ def ocr_image(image_path: str) -> dict:
                 "conf": result.get("conf", 0.0),
                 "needs_correction": quality.get("grade") != "good",
                 "quality": quality,
+                "model": "PPStructureV3",
             }
     except Exception as e:
         logger.warning(f"[OCR] PPStructure 失败，回退到 PaddleOCR: {e}")
@@ -455,6 +456,8 @@ def ocr_image(image_path: str) -> dict:
                 "conf": result.get("conf", 0.0),
                 "needs_correction": quality.get("grade") != "good",
                 "quality": quality,
+                "model": "PaddleOCR",
+            }
             }
     except Exception as e:
         return {"ok": False, "error": f"OCR 引擎初始化失败: {e}"}

@@ -155,52 +155,84 @@ def page_ingest():
         with tab_panels:
             with ui.tab_panel(ocr_tab):
                 ui.label("支持 OCR（PaddleOCR）识别截图、扫描件中的文字").classes("text-sm text-gray-400")
+
+                ocr_file_data = None
+                ocr_file_name = None
+
                 ocr_upload = ui.upload(
                     label="上传图片进行 OCR",
-                    auto_upload=True,
+                    auto_upload=False,
                     multiple=False,
                 ).classes("w-full").props("accept='.png,.jpg,.jpeg,.bmp,.webp,.tiff'")
 
+                ocr_status_label = ui.label("").classes("text-sm mt-2")
                 ocr_result_label = ui.label("").classes("text-sm")
 
-                async def on_ocr(e):
-                    nonlocal ingest_content, ingest_source, ingest_method
+                def on_ocr_select(e):
+                    nonlocal ocr_file_data, ocr_file_name
+                    ocr_file_data = e.file
+                    ocr_file_name = e.file.name
+                    ocr_status_label.set_text(f"📎 已选择: {ocr_file_name}")
+                    ocr_btn.props("disable=false")
+                    ocr_result_label.set_text("")
+
+                ocr_upload.on_upload(on_ocr_select)
+
+                ocr_btn = ui.button("🚀 开始识别", on_click=None).props("disable=true").classes("mt-2")
+
+                async def on_ocr_click():
+                    nonlocal ingest_content, ingest_source, ingest_method, ocr_file_data, ocr_file_name
+                    if not ocr_file_data:
+                        ui.notify("请先选择图片", type="warning")
+                        return
+
+                    ocr_btn.props("disable=true")
+                    ocr_status_label.set_text("⏳ 识别中...")
+                    ocr_result_label.set_text("")
+
                     temp_path = None
                     try:
                         import tempfile
-                        file_bytes = await e.file.read()
-                        fname = e.file.name
+                        file_bytes = await ocr_file_data.read()
+                        fname = ocr_file_name
 
-                        # 保存到临时文件
                         suffix = os.path.splitext(fname)[1] or ".tmp"
                         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, mode="wb") as tf:
                             tf.write(file_bytes)
                             temp_path = tf.name
 
                         result = await asyncio.to_thread(kb_query.ocr_image, temp_path)
-                        text = result.get("ocr_text", "")
-                        content_text.set_value(text)
-                        ingest_content = text
-                        ingest_source = f"OCR: {e.file.name}"
-                        source_label.set_text(f"来源：OCR - {e.file.name}")
-                        ingest_method = "ocr"
-                        STATE["ingest_content"] = text
-                        STATE["ingest_source"] = f"OCR: {e.file.name}"
-                        STATE["ingest_method"] = "ocr"
-                        STATE["source_path"] = f"ocr:{e.file.name}"  # OCR 来源标记（无源文件路径）
-                        ocr_result_label.set_text(f"✅ 识别完成，{len(text)} 字")
-                        if result.get("needs_correction"):
-                            ocr_result_label.set_text(f"⚠️ 识别质量较低，建议 AI 纠错 ({len(text)} 字)")
+
+                        if result.get("ok"):
+                            text = result.get("ocr_text", "")
+                            content_text.set_value(text)
+                            ingest_content = text
+                            ingest_source = f"OCR: {fname}"
+                            source_label.set_text(f"来源：OCR - {fname}")
+                            ingest_method = "ocr"
+                            STATE["ingest_content"] = text
+                            STATE["ingest_source"] = f"OCR: {fname}"
+                            STATE["ingest_method"] = "ocr"
+                            STATE["source_path"] = f"ocr:{fname}"
+                            ocr_status_label.set_text(f"✅ 识别完成，{len(text)} 字")
+                            if result.get("needs_correction"):
+                                ocr_result_label.set_text(f"⚠️ 识别质量较低，建议 AI 纠错")
+                        else:
+                            error_msg = result.get("error", "未知错误")
+                            ui.notify(f"❌ OCR 失败: {error_msg}", type="negative")
+                            ocr_status_label.set_text(f"❌ 识别失败: {error_msg}")
                     except Exception as ex:
                         ui.notify(f"❌ OCR 失败: {ex}", type="negative")
+                        ocr_status_label.set_text(f"❌ 识别失败: {ex}")
                     finally:
                         if temp_path and os.path.exists(temp_path):
                             try:
                                 os.unlink(temp_path)
                             except OSError:
                                 pass
+                        ocr_btn.props("disable=false")
 
-                ocr_upload.on_upload(on_ocr)
+                ocr_btn.on_click(on_ocr_click)
 
         # ── Tab 3: 手动输入 ──
         with tab_panels:
