@@ -172,6 +172,26 @@ def page_config():
 
             # ── 系统配置 ──
             with ui.tab_panel(sys_tab):
+                ui.markdown("### 置信度路由阈值")
+                ui.markdown("*AI 分析后按置信度分三档：≥高阈值直接入库 / 中间待审核 / <低阈值进死信队列。*")
+
+                conf_low = ui.slider(
+                    label="死信阈值（低于此值进死信队列）",
+                    min=0.10,
+                    max=0.60,
+                    step=0.05,
+                    value=float(os.environ.get("KB_CONFIDENCE_LOW", "0.40")),
+                ).classes("w-64")
+
+                conf_high = ui.slider(
+                    label="入库阈值（高于此值直接入库）",
+                    min=0.50,
+                    max=0.95,
+                    step=0.05,
+                    value=float(os.environ.get("KB_CONFIDENCE_HIGH", "0.75")),
+                ).classes("w-64")
+
+                ui.separator()
                 ui.markdown("### 系统设置")
                 kb_root = ui.input(
                     label="知识库根目录",
@@ -179,7 +199,13 @@ def page_config():
                 ).classes("w-full")
 
                 def save_sys():
-                    _save_env({"KB_ROOT_PATH": kb_root.value or ""})
+                    _save_env({
+                        "KB_ROOT_PATH": kb_root.value or "",
+                        "KB_CONFIDENCE_LOW": str(conf_low.value),
+                        "KB_CONFIDENCE_HIGH": str(conf_high.value),
+                    })
+                    os.environ["KB_CONFIDENCE_LOW"] = str(conf_low.value)
+                    os.environ["KB_CONFIDENCE_HIGH"] = str(conf_high.value)
                     ui.notify("✅ 系统配置已保存", type="positive")
 
                 ui.button("💾 保存", on_click=save_sys).props("color=blue")

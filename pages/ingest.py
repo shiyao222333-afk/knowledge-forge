@@ -54,6 +54,8 @@ def page_ingest():
         ingest_content = ""
         ingest_source = ""
         ingest_method = ""
+        ocr_temp_path = None   # 图片 OCR 的临时文件路径
+        ocr_fname = None      # 图片文件名
 
         # ── Tab 1: 文件上传 ──
         with tab_panels:
@@ -73,9 +75,57 @@ def page_ingest():
                 ).classes("w-full").props("accept='.txt,.md,.json,.csv,.pdf,.epub,.html,.htm,.srt,.docx,.pptx,.png,.jpg,.jpeg,.bmp,.webp,.tiff'")
 
                 up_result = ui.label("").classes("text-sm")
+                ocr_btn_container = ui.row().classes("w-full gap-2 mt-1")
+
+                async def on_ocr_start():
+                    """「开始识别」按钮回调：执行 OCR 并填结果到编辑区"""
+                    nonlocal ocr_temp_path, ocr_fname, ingest_content, ingest_source, ingest_method
+                    if not ocr_temp_path or not os.path.exists(ocr_temp_path):
+                        ui.notify("⚠️ 没有待识别的图片，请重新上传", type="warning")
+                        ocr_btn_container.clear()
+                        return
+                    up_result.set_text(f"🔍 {ocr_fname} · OCR 识别中...")
+                    ocr_btn_container.clear()
+                    with ocr_btn_container:
+                        ui.label("⏳ 识别中...").classes("text-sm text-blue-500")
+                    tmp = ocr_temp_path
+                    fname = ocr_fname
+                    ocr_temp_path = None
+                    ocr_fname = None
+                    ocr_btn_container.clear()
+                    try:
+                        ocr_result = await asyncio.to_thread(kb_query.ocr_image, tmp)
+                        if ocr_result.get("ok"):
+                            text = ocr_result.get("ocr_text", "")
+                            char_count = len(text)
+                            up_result.set_text(f"✅ {fname} · OCR 识别完成，{char_count} 字")
+                            if ocr_result.get("needs_correction"):
+                                ui.notify("⚠️ 图片识别质量较低，建议人工核对", type="warning")
+                            ingest_method = "ocr"
+                            STATE["ingest_method"] = "ocr"
+                            STATE["source_path"] = f"ocr:{fname}"
+                            ingest_content = text
+                            content_text.set_value(text)
+                            ingest_source = f"OCR: {fname}"
+                            source_label.set_text(f"来源：{fname}（OCR）")
+                            STATE["ingest_content"] = text
+                            confirm_label.set_text(f"✅ {fname} · OCR 完成 · 请确认内容")
+                        else:
+                            error_msg = ocr_result.get("error", "未知错误")
+                            ui.notify(f"❌ OCR 识别失败: {error_msg}", type="negative")
+                            up_result.set_text(f"❌ {fname} · OCR 失败: {error_msg}")
+                    except Exception as ex:
+                        ui.notify(f"❌ OCR 异常: {ex}", type="negative")
+                        up_result.set_text(f"❌ OCR 异常: {ex}")
+                    finally:
+                        if tmp and os.path.exists(tmp):
+                            try:
+                                os.unlink(tmp)
+                            except OSError:
+                                pass
 
                 async def on_upload(e):
-                    nonlocal ingest_content, ingest_source, ingest_method
+                    nonlocal ingest_content, ingest_source, ingest_method, ocr_temp_path, ocr_fname
                     temp_path = None
                     try:
                         import tempfile
@@ -113,23 +163,15 @@ def page_ingest():
                         is_ocr = isinstance(extract_result, dict) and extract_result.get("ocr_required")
 
                         if is_ocr:
-                            # 图片文件：自动走 OCR，无需切 Tab
-                            up_result.set_text(f"🖼️ {fname} · {fsize/1024:.1f}KB · 图片识别中，请稍候...")
-                            ocr_result = await asyncio.to_thread(kb_query.ocr_image, temp_path)
-                            if ocr_result.get("ok"):
-                                text = ocr_result.get("ocr_text", "")
-                                char_count = len(text)
-                                up_result.set_text(f"✅ {fname} · OCR 识别完成，{char_count} 字")
-                                if ocr_result.get("needs_correction"):
-                                    ui.notify("⚠️ 图片识别质量较低，建议人工核对", type="warning")
-                                ingest_method = "ocr"
-                                STATE["ingest_method"] = "ocr"
-                                STATE["source_path"] = f"ocr:{fname}"
-                            else:
-                                error_msg = ocr_result.get("error", "未知错误")
-                                ui.notify(f"❌ OCR 识别失败: {error_msg}", type="negative")
-                                up_result.set_text(f"❌ {fname} · OCR 失败: {error_msg}")
-                                return
+                            # 图片文件：保存路径，显示「开始识别」按钮，不自动 OCR
+                            ocr_temp_path = temp_path
+                            ocr_fname = fname
+                            temp_path = None  # 防止 finally 删除临时文件
+                            up_result.set_text(f"🖼️ {fname} · {fsize/1024:.1f}KB · 上传完成，点击「开始识别」")
+                            ocr_btn_container.clear()
+                            with ocr_btn_container:
+                                ui.button("🚀 开始识别", on_click=on_ocr_start, color="blue")
+                            return
                         else:
                             if isinstance(extract_result, dict):
                                 text = extract_result.get("text", "")
@@ -279,11 +321,13 @@ def page_ingest():
                 overall_conf = 0.0
                 ui.notify("⚠️ 未执行 AI 分析，将使用当前值直接摄入", type="warning")
 
-            # DLQ 检查
-            if overall_conf >= 0.75:
+            # 置信度路由（三档，阈值从 .env 读取）
+            _conf_low = float(os.environ.get("KB_CONFIDENCE_LOW", "0.40"))
+            _conf_high = float(os.environ.get("KB_CONFIDENCE_HIGH", "0.75"))
+            if overall_conf >= _conf_high:
                 needs_review = False
                 dlq = False
-            elif overall_conf >= 0.40:
+            elif overall_conf >= _conf_low:
                 needs_review = True
                 dlq = False
             else:
@@ -301,7 +345,7 @@ def page_ingest():
                     "metadata": metadata,
                     "confidence": overall_conf,
                     "field_sources": field_sources,
-                    "reason": f"置信度过低（{overall_conf:.2f} < 0.40），需人工审核",
+                    "reason": f"置信度过低（{overall_conf:.2f} < {_conf_low:.2f}），需人工审核",
                     "ingested_at": datetime.now(timezone.utc).isoformat(),
                 }
                 with open(dlq_file, "w", encoding="utf-8") as f:
