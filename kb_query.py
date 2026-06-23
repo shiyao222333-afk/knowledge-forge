@@ -40,6 +40,7 @@ from typing import Optional
 from collections import defaultdict
 import hashlib
 import uuid
+import threading
 from datetime import datetime, timezone
 import tempfile
 from docx import Document
@@ -52,6 +53,7 @@ from qconst import (
     PROJECT_DIR, QDRANT_URL, DEFAULT_COLLECTION,
     IMAGES_DIR, INGEST_LOG_PATH, _check_qdrant,
     OLLAMA_URL, EMBED_MODEL, EMBED_DIM,
+    INGEST_SKIP_DUPLICATES, CONFIDENCE_LOW, CONFIDENCE_HIGH,
 )
 from doc_manager import (
     _log_ingest, read_ingest_log,
@@ -304,16 +306,21 @@ def _step_write_qdrant(state: dict) -> dict:
 
 
 def _step_log_ingest(state: dict) -> dict:
-    """Step 10: 写入摄入日志"""
-    _log_ingest({
-        "source_file": state.get("file_path") or "",
-        "source_text": state["text"][:500] if not state.get("file_path") else None,
-        "collection": state["collection"],
-        "doc_id": state["doc_id"],
-        "content_hash": state.get("content_hash", ""),
-        "embed_model": state.get("model", EMBED_MODEL),
-        "ingested_at": state["ingested_at"],
-    })
+    """Step 10: 写入摄入日志（非阻断步骤 — 失败不导致摄入回滚）。"""
+    try:
+        _log_ingest({
+            "source_file": state.get("file_path") or "",
+            "source_text": state["text"][:500] if not state.get("file_path") else None,
+            "collection": state["collection"],
+            "doc_id": state["doc_id"],
+            "content_hash": state.get("content_hash", ""),
+            "embed_model": state.get("model", EMBED_MODEL),
+            "ingested_at": state["ingested_at"],
+        })
+    except Exception as e:
+        # 日志写入失败不阻断摄入 — 数据已在 Qdrant 中
+        import logging
+        logging.getLogger(__name__).warning(f"[ingest] 摄入日志写入失败（数据已入库）: {e}")
     return {"ok": True}
 
 
@@ -339,13 +346,17 @@ PIPELINE = [
 # 核心 API
 # ═══════════════════════════════════════════
 
+# ── 摄入并发保护锁（watcher + 手动上传不能同时写入）──
+_ingest_lock = threading.Lock()
+
+
 def ingest(
     file_path: str = None,
     text: str = None,
     collection: str = DEFAULT_COLLECTION,
     metadata: dict = None,
     model: str = EMBED_MODEL,
-    skip_duplicates: bool = True,
+    skip_duplicates: bool = None,
     skip_steps: list = None,
     field_sources: dict = None,
     overall_confidence: float = None,
@@ -370,6 +381,8 @@ def ingest(
         {"ok": true/false, "chunks": N, "collection": "...", "source": "...", ...}
     """
     skip = set(skip_steps or [])
+    if skip_duplicates is None:
+        skip_duplicates = INGEST_SKIP_DUPLICATES
     if not skip_duplicates:
         skip.add("dedup")
 
@@ -393,26 +406,40 @@ def ingest(
         "points": [],
     }
 
-    for step_name, step_fn in PIPELINE:
-        if step_name in skip:
-            continue
-        result = step_fn(state)
-        if not result.get("ok"):
-            log_activity(
-                action="ingest_failed",
-                doc_id=state.get("doc_id", ""),
-                detail=result.get("error", f"步骤 {step_name} 失败"),
-                collection=state["collection"],
-                source=state.get("source", ""),
-            )
-            return result
+    try:
+        with _ingest_lock:
+            for step_name, step_fn in PIPELINE:
+                if step_name in skip:
+                    continue
+                result = step_fn(state)
+                if not result.get("ok"):
+                    log_activity(
+                        action="ingest_failed",
+                        doc_id=state.get("doc_id", ""),
+                        detail=result.get("error", f"步骤 {step_name} 失败"),
+                        collection=state["collection"],
+                        source=state.get("source", ""),
+                    )
+                    return result
+    except Exception as e:
+        import traceback
+        err_msg = f"摄入异常中断: {e}"
+        log_activity(
+            action="ingest_crash",
+            doc_id=state.get("doc_id", ""),
+            detail=f"{err_msg}\n{traceback.format_exc()}",
+            collection=state["collection"],
+            source=state.get("source", ""),
+        )
+        return {"ok": False, "error": err_msg, "source": state.get("source", ""), "file_path": file_path}
 
+    ingestion_source = (metadata or {}).get("ingestion_source", "手动输入" if not state.get("file_path") else "文件上传")
     log_activity(
         action="ingest_success",
         doc_id=state["doc_id"],
         detail=state.get("source", ""),
         collection=state["collection"],
-        source="文件上传" if state.get("file_path") else "手动输入",
+        source=ingestion_source,
     )
     return {
         "ok": True,
@@ -430,7 +457,7 @@ def ingest_batch(
     collection: str = DEFAULT_COLLECTION,
     metadata: dict = None,
     model: str = EMBED_MODEL,
-    skip_duplicates: bool = True,
+    skip_duplicates: bool = None,
     skip_steps: list = None,
     field_sources: dict = None,
     overall_confidence: float = None,
@@ -499,7 +526,7 @@ if __name__ == "__main__":
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     parser = argparse.ArgumentParser(description="WorkBuddy 知识库引擎")
     parser.add_argument("query", nargs="*", help="搜索查询")
-    parser.add_argument("--top", type=int, default=5, help="返回结果数")
+    parser.add_argument("--top", type=int, default=None, help=f"返回结果数（默认 {SEARCH_TOP_K}）")
     parser.add_argument("--collection", default=DEFAULT_COLLECTION, help="集合名称")
     parser.add_argument("--ingest", default=None, help="摄入文件路径")
     parser.add_argument("--text", default=None, help="直接摄入文本内容（与 --source 配合）")
@@ -512,7 +539,7 @@ if __name__ == "__main__":
     parser.add_argument("--llm-model", default=None, help="LLM 模型名")
     parser.add_argument("--llm-base-url", default=None, help="LLM API 地址")
     parser.add_argument("--llm-api-key", default=None, help="LLM API Key")
-    parser.add_argument("--threshold", type=float, default=0.3, help="相关度阈值")
+    parser.add_argument("--threshold", type=float, default=None, help=f"相关度阈值（默认 {SEARCH_SCORE_THRESHOLD}）")
     parser.add_argument("--table-split-threshold", type=int, default=None, help="表格行拆分阈值（默认用 TABLE_SPLIT_THRESHOLD）")
     parser.add_argument("--model", default=EMBED_MODEL, help="嵌入模型")
     parser.add_argument("--output", default=None, help="输出目录")
