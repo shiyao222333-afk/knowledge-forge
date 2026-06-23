@@ -13,8 +13,6 @@ from typing import Optional
 
 from qconst import PROJECT_DIR
 from text_pipeline import _text_hash, _detect_language
-from qdrant_client.http.models import SparseVector
-from qdrant_client.http.models import SparseVector
 from config.classifications import normalize_facet_values
 
 
@@ -111,15 +109,9 @@ def build_payloads(
     for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
         # 每个 chunk 用随机 64-bit ID（不依赖 Qdrant points_count，零并发冲突）
         point_id = uuid.uuid4().int >> 64
-        points.append({
+        point = {
             "id": point_id,
-            "vector": {
-                "dense": vec,
-                "sparse": SparseVector(
-                    indices=sparse_vectors[i][0] if sparse_vectors else [],
-                    values=sparse_vectors[i][1] if sparse_vectors else []
-                ) if sparse_vectors else vec,
-            },
+            "vector": vec,  # 稠密向量（plain array）
             "payload": {
                 # ── 内容字段 ──
                 "text": chunk,
@@ -200,7 +192,16 @@ def build_payloads(
                 "ext_bool1": None, "ext_bool2": None, "ext_bool3": None,
                 "ext_date1": None, "ext_date2": None, "ext_date3": None,
             }
-        })
+        }
+        # ── 稀疏向量（命名向量 "bm25"，独立于稠密向量）──
+        if sparse_vectors and i < len(sparse_vectors):
+            point["sparse_vectors"] = {
+                "bm25": {
+                    "indices": sparse_vectors[i][0],
+                    "values": sparse_vectors[i][1]
+                }
+            }
+        points.append(point)
 
     return {
         "ok": True,

@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-- 当前版本：**v0.7.1 🔧 进行中**（OCR 功能修复 — T1-T3 P0 Bug 修复）
+- 当前版本：**v0.8.0 🔧 进行中**（搜索优化主线已完成 S1.1–S1.4）
 - 下一个版本：**v0.8.0**（搜索优化 + 审核队列）
 - 活跃 Bug：**0**
 - Git 状态：main 分支，v0.7.0 已发布，v0.7.1 已提交 + 已推送
@@ -457,10 +457,10 @@ search_engine.py（增强模块）
 
 | 编号 | 任务 | 内容 | 优先级 | 状态 | 预计工作量 |
 |:----:|------|------|:--:|:--:|:--:|
-| **S1.1** | 混合查询 | 使用 Qdrant 原生 hybrid API（向量 + 稀疏向量） | P0 MVP | 📋 待开始 | 3h |
-| **S1.2** | 重新摄入数据 | 使用备份数据重新摄入，验证稠密+稀疏向量写入 | P0 MVP | 📋 待开始 | 2h |
-| **S1.3** | Grouping API | 按 `doc_id` 分组，解决结果冗余 | P0 高收益 | 📋 待开始 | 2h |
-| **S1.4** | 量化（Quantization） | 启用标量量化，降低内存占用 75% | P0 高收益 | 📋 待开始 | 1h |
+| **S1.1** | 混合查询 | 使用 Qdrant 原生 query API（prefetch + RRF fusion） | P0 MVP | ✅ 已完成（2026-06-23） | - |
+| **S1.2** | 重新摄入数据 | 删除旧集合，重建（含量化+稀疏向量），摄入测试数据验证 | P0 MVP | ✅ 已完成（2026-06-23） | - |
+| **S1.3** | Grouping API | 按 `doc_id` 分组去重，每文档只保留最佳 chunk | P0 高收益 | ✅ 已完成（2026-06-23） | - |
+| **S1.4** | 量化（Quantization） | 启用 int8 标量量化，降低内存占用 75% | P0 高收益 | ✅ 已完成（2026-06-23） | - |
 | **S1.5** | ACORN 过滤 | 提升严格过滤条件下的召回率 | P1 | 📋 待开始 | 0.5h |
 | **S2** | 重排序 | Top-K 结果用嵌入模型重新打分排序（使用 qwen3-embedding:4b） | P0 MVP | ✅ 已完成（2026-06-23） | - |
 | **S3** | 重排序模型可配置 | 引擎配置页面可选重排序模型（降级到阶段三） | P2 锦上添花 | 📋 待开始 | 3h |
@@ -473,14 +473,23 @@ search_engine.py（增强模块）
 
 ### S1 详细方案（混合检索）
 
-**当前状态**：`search()` 只做向量检索（`qdrant/search` 使用 `vector` 参数）
+**实现方式**：Qdrant Query API (`/points/query`) + prefetch + RRF fusion
 
-**改造后**：
+**请求结构**：
+```json
+POST /collections/{collection}/points/query
+{
+    "prefetch": [
+        {"query": dense_vec, "limit": top_k * 2},
+        {"query": sparse_vec, "using": "bm25", "limit": top_k * 2}
+    ],
+    "query": {"fusion": "rrf"},
+    "limit": top_k,
+    "filter": {...}
+}
 ```
-query → embed → 向量检索 Top-20
-              └→ BM25 关键词检索 Top-20
-              └→ 合并去重 → 重排序 → 返回 Top-K
-```
+
+**降级策略**：稀疏向量生成失败 → 自动降级为纯稠密查询（单 prefetch）
 
 **实现方式**（Qdrant 8.3+ 支持 `hybrid` 检索）：
 ```python

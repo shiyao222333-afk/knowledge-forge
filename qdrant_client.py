@@ -17,41 +17,17 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════
 
 def _ensure_collection(collection: str) -> bool:
-    """确保指定集合存在，不存在则自动创建。"""
+    """确保指定集合存在，不存在则自动创建（含稀疏向量 + int8 量化）。"""
     if not _check_qdrant():
         return False
     try:
         resp = requests.get(f"{QDRANT_URL}/collections", timeout=5)
         names = [c["name"] for c in resp.json()["result"]["collections"]]
         if collection not in names:
-            requests.put(
-                f"{QDRANT_URL}/collections/{collection}",
-                json={"vectors": {"size": EMBED_DIM, "distance": "Cosine"}},
-                timeout=10
-            )
-            # ── 创建 Payload Index（分面字段 + 常用过滤字段）──
-            payload_index_fields = {
-                "content_type":     "keyword",
-                "domain":          "keyword",  # list of keywords
-                "temporal_nature": "keyword",
-                "epistemic_status": "keyword",
-                "lifecycle":       "keyword",
-                "is_personal":     "bool",
-                "trust_score":      "integer",
-                "knowledge_type":   "keyword",
-                "language":        "keyword",
-                "access_level":     "keyword",
-                "needs_review":    "bool",
-            }
-            for field, schema in payload_index_fields.items():
-                try:
-                    requests.put(
-                        f"{QDRANT_URL}/collections/{collection}/index",
-                        json={"field_name": field, "field_schema": schema},
-                        timeout=5
-                    )
-                except Exception as e:
-                    logger.warning(f"[Qdrant] Payload 索引创建失败（可忽略）: {e}")
+            result = create_collection(collection)
+            if not result.get("ok"):
+                logger.warning(f"[Qdrant] 自动创建集合失败: {result.get('error')}")
+                return False
         return True
     except Exception:
         return False
@@ -59,7 +35,11 @@ def _ensure_collection(collection: str) -> bool:
 
 def create_collection(collection: str) -> dict:
     """
-    创建新的知识库集合。如果集合已存在则报错。
+    创建新的知识库集合（含稀疏向量 BM25 + int8 标量量化）。
+
+    v0.8.0 新增:
+        - sparse_vectors: "bm25" (IDF modifier)
+        - quantization_config: int8 标量量化（内存降低约 75%）
 
     返回:
         {"ok": true, "collection": "...", "dim": N}
@@ -71,12 +51,32 @@ def create_collection(collection: str) -> dict:
         existing = [c["name"] for c in resp.json()["result"]["collections"]]
         if collection in existing:
             return {"ok": False, "error": f"集合「{collection}」已存在"}
+
+        # ── 集合主体配置（稠密向量 + 稀疏向量 + 量化）──
+        collection_config = {
+            "vectors": {
+                "size": EMBED_DIM,
+                "distance": "Cosine"
+            },
+            "sparse_vectors": {
+                "bm25": {"modifier": "idf"}
+            },
+            "quantization_config": {
+                "scalar": {
+                    "type": "int8",
+                    "quantile": 0.99,
+                    "always_ram": True
+                }
+            },
+            "on_disk_payload": True,
+        }
         requests.put(
             f"{QDRANT_URL}/collections/{collection}",
-            json={"vectors": {"size": EMBED_DIM, "distance": "Cosine"}},
+            json=collection_config,
             timeout=10
         )
-        # ── 创建 Payload Index ──
+
+        # ── 创建 Payload Index（分面字段 + 常用过滤字段）──
         payload_index_fields = {
             "content_type":     "keyword",
             "domain":          "keyword",
@@ -98,7 +98,7 @@ def create_collection(collection: str) -> dict:
                     timeout=5
                 )
             except Exception as e:
-                logger.warning(f"[Qdrant] 集合创建异常（可忽略）: {e}")
+                logger.warning(f"[Qdrant] Payload 索引创建失败（可忽略）: {e}")
         return {"ok": True, "collection": collection, "dim": EMBED_DIM}
     except Exception as e:
         return {"ok": False, "error": str(e)}

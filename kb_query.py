@@ -274,6 +274,7 @@ def _step_build_payloads(state: dict) -> dict:
         text=state["text"],
         chunks=state["chunks"],
         vectors=state["vectors"],
+        sparse_vectors=state.get("sparse_vectors"),
         base_meta=base_meta,
         file_path=state.get("file_path") or "",
         source=state.get("source", "unknown"),

@@ -30,6 +30,7 @@ from qconst import (
 from qdrant_client import _ensure_collection
 from text_pipeline import _embed
 from reranker import rerank_results, rerank_results_simple
+from sparse_encoder import encode_sparse_query
 
 try:
     from fpdf import FPDF
@@ -164,34 +165,62 @@ def search(
         if must_conditions:
             qdrant_filter = {"must": must_conditions}
 
-    # 搜索 Qdrant
+    # ── 生成稀疏查询向量 ──
+    sparse_query = None
     try:
-        search_body = {
-            "vector": query_vec,
+        sparse_query = encode_sparse_query(query)
+    except Exception as e:
+        print(f"[Search] 稀疏查询向量生成失败（降级为纯稠密搜索）: {e}")
+
+    # ── 搜索 Qdrant（原生混合查询：稠密 + 稀疏 → RRF 融合）──
+    try:
+        # 构建 prefetch 子查询
+        prefetch = []
+        if sparse_query:
+            prefetch.append({
+                "query": {
+                    "indices": sparse_query[0],
+                    "values": sparse_query[1]
+                },
+                "using": "bm25",
+                "limit": top_k * 2,
+            })
+        prefetch.append({
+            "query": query_vec,
+            "limit": top_k * 2,
+        })
+
+        query_body = {
+            "prefetch": prefetch,
+            "query": {"fusion": "rrf"},
             "limit": top_k,
             "with_payload": True,
-            "score_threshold": score_threshold
         }
         if qdrant_filter:
-            search_body["filter"] = qdrant_filter
+            query_body["filter"] = qdrant_filter
 
+        # 使用 Qdrant Query API（v1.10+ 原生混合查询）
         resp = requests.post(
-            f"{QDRANT_URL}/collections/{collection}/points/search",
-            json=search_body,
+            f"{QDRANT_URL}/collections/{collection}/points/query",
+            json=query_body,
             timeout=30
         )
         resp.raise_for_status()
-        results = resp.json()["result"]
-        
+        results = resp.json()["result"]["points"]
+
+        # ── 后过滤：RRF 分数无法直接用 score_threshold，手动过滤 ──
+        if score_threshold and score_threshold > 0:
+            filtered = [r for r in results if r.get("score", 0) >= score_threshold]
+            if filtered:
+                results = filtered
+
         # ── 重排序（S2）：使用嵌入模型重新打分 ──
         try:
-            # 从环境变量读取重排序配置
             rerank_enabled = os.environ.get("KB_RERANK_ENABLED", "true").lower() == "true"
             rerank_model = os.environ.get("KB_RERANK_MODEL", "qwen3-embedding:4b")
             rerank_top_n = int(os.environ.get("KB_RERANK_TOP_N", "20"))
-            
+
             if rerank_enabled:
-                # 先尝试使用 Ollama 嵌入 API
                 results = rerank_results(
                     query=query,
                     results=results,
@@ -201,7 +230,6 @@ def search(
         except Exception as e:
             print(f"[Search] 重排序失败: {e}，尝试简单重排序")
             try:
-                # 降级：使用简单关键词匹配
                 results = rerank_results_simple(query, results, top_n=rerank_top_n)
             except Exception as e2:
                 print(f"[Search] 简单重排序也失败: {e2}，使用原始排序")
@@ -256,6 +284,21 @@ def search(
             # 重排序分数（如果有）
             "rerank_score":   r.get("rerank_score", None),
         })
+
+    # ── v0.8.0: Grouping API — 按 doc_id 分组去重，每文档只保留最佳 chunk ──
+    if chunks:
+        doc_groups = {}
+        for c in chunks:
+            did = c["doc_id"]
+            if did not in doc_groups or c["score"] > doc_groups[did]["score"]:
+                doc_groups[did] = c
+            # 统计该文档在结果中出现的 chunk 数
+            doc_groups[did]["_chunks_in_results"] = doc_groups[did].get("_chunks_in_results", 0) + 1
+        grouped = sorted(doc_groups.values(), key=lambda c: c["score"], reverse=True)
+        # 附加分组元信息
+        for c in grouped:
+            c["group_chunks_count"] = c.pop("_chunks_in_results", 1)
+        chunks = grouped
 
     return {
         "ok": True,
@@ -1161,175 +1204,3 @@ def get_facet_stats(collection: str = DEFAULT_COLLECTION) -> dict:
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
-
-
-
-
-# ═════════════════════════════════════════
-# 混合检索（S1）：向量 + 关键词
-# ═════════════════════════════════════════
-
-def _keyword_search(
-    query: str,
-    top_k: int = 20,
-    collection: str = DEFAULT_COLLECTION,
-    qdrant_url: str = QDRANT_URL
-) -> list:
-    """
-    关键词检索（基于简单文本匹配）。
-    
-    使用 Qdrant scroll API 获取候选文档，
-    然后在内存中计算关键词匹配分数。
-    返回格式与向量检索相同的结果列表。
-    """
-    try:
-        import jieba
-        # 中文分词
-        keywords = list(jieba.cut_for_search(query))
-    except ImportError:
-        # 降级：简单分词（按空格和标点）
-        import re
-        keywords = re.findall(r'[\w一-鿿]+', query)
-    
-    if not keywords:
-        return []
-    
-    # 使用 /points/scroll 获取候选文档
-    try:
-        resp = requests.post(
-            f"{qdrant_url}/collections/{collection}/points/scroll",
-            json={
-                "limit": 1000,
-                "with_payload": True,
-                "with_vector": False
-            },
-            timeout=30
-        )
-        resp.raise_for_status()
-        points = resp.json()["result"]["points"]
-        
-        # 简单评分：计算每个文档包含多少查询关键词
-        results = []
-        for p in points:
-            text = p.get("payload", {}).get("text", "").lower()
-            if not text:
-                continue
-            # 计算关键词匹配数
-            match_count = sum(1 for kw in keywords if kw.lower() in text)
-            if match_count == 0:
-                continue
-            # 简单评分：匹配关键词数 / 总关键词数
-            score = match_count / len(keywords)
-            results.append({
-                "id": p["id"],
-                "score": score,
-                "payload": p["payload"]
-            })
-        
-        # 按评分降序排列
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return results[:top_k]
-        
-    except Exception as e:
-        print(f"[Keyword Search] 失败: {e}")
-        return []
-
-
-def hybrid_search(
-    query: str,
-    top_k: int = 5,
-    collection: str = DEFAULT_COLLECTION,
-    score_threshold: float = 0.3,
-    model: str = EMBED_MODEL,
-    facet_filter: dict = None,
-    vector_weight: float = 0.5,
-    keyword_weight: float = 0.5,
-) -> dict:
-    """
-    混合检索：向量检索 + 关键词检索，合并去重后返回。
-    
-    参数:
-        query: 搜索查询
-        top_k: 返回结果数
-        collection: 集合名称
-        score_threshold: 最低相似度阈值
-        model: 嵌入模型
-        facet_filter: 分面过滤条件
-        vector_weight: 向量检索结果权重（默认 0.5）
-        keyword_weight: 关键词检索结果权重（默认 0.5）
-        
-    返回:
-        与 search() 相同格式的字典
-    """
-    # 1. 向量检索
-    vec_result = search(
-        query=query,
-        top_k=top_k * 2,  # 检索更多结果用于合并
-        collection=collection,
-        score_threshold=score_threshold,
-        model=model,
-        facet_filter=facet_filter
-    )
-    
-    if not vec_result.get("ok"):
-        return vec_result  # 返回错误信息
-    
-    vec_chunks = vec_result["chunks"]
-    
-    # 2. 关键词检索
-    try:
-        kw_results = _keyword_search(
-            query=query,
-            top_k=top_k * 2,
-            collection=collection
-        )
-    except Exception as e:
-        print(f"[Hybrid] 关键词检索失败: {e}，仅使用向量检索")
-        return vec_result  # 降级：仅返回向量检索结果
-    
-    # 3. 合并结果（去重）
-    # 使用 doc_id + chunk_index 作为唯一键
-    merged = {}
-    
-    # 添加向量检索结果
-    for c in vec_chunks:
-        key = f"{c['doc_id']}_{c['chunk_index']}"
-        c["combined_score"] = c["score"] * vector_weight
-        merged[key] = c
-    
-    # 添加/合并关键词检索结果
-    for r in kw_results:
-        key = f"{r['payload'].get('doc_id', '')}_{r['payload'].get('chunk_index', 0)}"
-        if key in merged:
-            # 已存在：合并分数
-            merged[key]["combined_score"] = merged[key].get("combined_score", 0) + r["score"] * keyword_weight
-            merged[key]["keyword_score"] = r["score"]
-        else:
-            # 新结果：添加
-            c = {
-                "text": r["payload"].get("text", ""),
-                "title": r["payload"].get("title", ""),
-                "source": r["payload"].get("source", "未知"),
-                "score": r["score"],  # 原始关键词分数
-                "chunk_index": r["payload"].get("chunk_index", 0),
-                "doc_id": r["payload"].get("doc_id", ""),
-                "combined_score": r["score"] * keyword_weight,
-                "keyword_score": r["score"],
-                # 复制其他字段...
-            }
-            # 复制 payload 中的其他字段
-            for field in ["content_type", "domain", "temporal_nature", "epistemic_status",
-                         "lifecycle", "trust_score", "knowledge_type", "tags"]:
-                c[field] = r["payload"].get(field, "")
-            merged[key] = c
-    
-    # 4. 按 combined_score 排序
-    result_list = sorted(merged.values(), key=lambda x: x.get("combined_score", 0), reverse=True)
-    
-    # 5. 返回前 top_k 个结果
-    return {
-        "ok": True,
-        "query": query,
-        "total": len(result_list),
-        "chunks": result_list[:top_k]
-    }
