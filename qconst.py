@@ -12,6 +12,10 @@ import requests
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 QDRANT_URL = os.environ.get("KB_QDRANT_URL", "http://127.0.0.1:6333")
+# Windows 上 localhost 可能解析到 IPv6 ::1，但 Qdrant 只监听 IPv4
+# 强制标准化为 127.0.0.1，避免连接失败
+if "localhost" in QDRANT_URL:
+    QDRANT_URL = QDRANT_URL.replace("localhost", "127.0.0.1")
 DEFAULT_COLLECTION = "athanor_v1"
 IMAGES_DIR = os.path.join(PROJECT_DIR, "local_data", "images")
 INGEST_LOG_PATH = os.path.join(PROJECT_DIR, "local_data", "ingest_log.jsonl")
