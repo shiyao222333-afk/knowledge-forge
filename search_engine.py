@@ -437,76 +437,20 @@ def _call_llm_api(messages: list, base_url: str = None, api_key: str = None, mod
     return resp.json()["choices"][0]["message"]["content"]
 
 
-def _extract_json_block(text: str) -> dict:
-    """
-    从 LLM 返回文本中提取并解析 JSON 对象（支持嵌套）。
-    
-    策略：
-      1. 先尝试直接 json.loads()（LLM 可能返回纯净 JSON）
-      2. 失败则找第一个 '{'，然后匹配花括号（计数深度），提取最外层 JSON
-      3. 对提取的块尝试 json.loads()
-    
-    返回:
-        dict — 解析成功
-        None — 无法提取/解析
-    """
-    text = text.strip()
-    
-    # 策略1：直接解析
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    
-    # 策略2：提取 JSON 块（匹配花括号）
-    start = text.find("{")
-    if start == -1:
-        return None
-    
-    depth = 0
-    in_string = False
-    escape_next = False
-    json_end = -1
-    
-    for i in range(start, len(text)):
-        ch = text[i]
-        
-        if escape_next:
-            escape_next = False
-            continue
-        if ch == "\\":
-            escape_next = True
-            continue
-        if ch == '"' and not in_string:
-            in_string = True
-            continue
-        if in_string:
-            if ch == '"':
-                in_string = False
-            continue
-        
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                json_end = i + 1
-                break
-    
-    if json_end == -1:
-        return None
-    
-    json_str = text[start:json_end]
-    try:
-        return json.loads(json_str)
-    except json.JSONDecodeError:
-        # 尝试修复常见错误：去掉尾部逗号
-        json_str = re.sub(r",\s*}", "}", json_str)
-        json_str = re.sub(r",\s*\]", "]", json_str)
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            return None
+# v1.0.0: 移动到 utils/llm_helpers.py
+from utils.llm_helpers import extract_json_block as _extract_json_block
+
+
+def _sanitize_html(text: str) -> str:
+    """简单 HTML 白名单过滤（防御 XSS）。"""
+    # 移除危险标签
+    dangerous_tags = r'<(script|iframe|object|embed|form|input|button)[^>]*>.*?</\1>'
+    text = re.sub(dangerous_tags, '', text, flags=re.DOTALL | re.IGNORECASE)
+    # 移除危险属性（on* 事件处理器）
+    text = re.sub(r' on\w+="[^"]*"', '', text, flags=re.IGNORECASE)
+    text = re.sub(r" on\w+='[^']*'", '', text, flags=re.IGNORECASE)
+    return text
+
 
 def _renumber_citations(synthesis: str, citation_keys: list) -> tuple[str, list[int]]:
     """
@@ -1100,7 +1044,10 @@ def answer(
 
     # 2.5 引用重编号（使编号连续不跳跃）
     synthesis, used = _renumber_citations(synthesis, citation_keys)
-
+    
+    # 2.6 HTML 过滤（防御 XSS）
+    synthesis = _sanitize_html(synthesis)
+    
     # 3. 生成 HTML 报告
     try:
         html_path = _render_report_html(query, synthesis, expanded_chunks, output_dir, used=used, citation_keys=citation_keys)

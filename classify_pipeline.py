@@ -22,7 +22,8 @@ from collections import defaultdict
 logger = logging.getLogger(__name__)
 
 from config.classifications import normalize_facet_values, CLASSIFY_RULES
-from search_engine import _call_llm_api, _extract_json_block, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+from search_engine import _call_llm_api, LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+from utils.llm_helpers import extract_json_block as _extract_json_block
 from text_pipeline import detect_language
 
 
