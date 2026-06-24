@@ -233,30 +233,25 @@ if ($Action -eq "health") {
         exit 1
     }
 
-    # 进程存在，轮询 TcpClient 直到 HTTP 就绪
+    # 进程存在，用 Test-NetConnection 检测端口（比 TcpClient 可靠）
     for ($i = 1; $i -le $MaxRetries; $i++) {
-        $connected = $false
-        try {
-            $tcp = New-Object System.Net.Sockets.TcpClient
-            $iar = $tcp.BeginConnect("127.0.0.1", 6333, $null, $null)
-            $wait = $iar.AsyncWaitHandle.WaitOne(2000)
-            if ($wait) {
-                $tcp.EndConnect($iar) | Out-Null
-                $connected = $true
+        $conn = Test-NetConnection -ComputerName "127.0.0.1" -Port 6333 -InformationLevel Quiet -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+        if ($conn -eq $true) {
+            # 再用 HTTP 请求验证真的是 Qdrant（不是别的程序占了端口）
+            try {
+                $resp = Invoke-WebRequest -Uri "http://127.0.0.1:6333/collections" -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
+                if ($resp.StatusCode -eq 200) {
+                    if ($MaxRetries -gt 1) {
+                        Write-Host "  Qdrant healthy (port 6333)"
+                    }
+                    Write-DetectResult "HEALTHY"
+                    exit 0
+                }
+            } catch {
+                # 端口可连接但不是 Qdrant，继续等待
             }
-            $tcp.Close()
-        } catch {}
-
-        if ($connected) {
-            # 只在多轮轮询时才输出"就绪"消息（单次检查安静通过）
-            if ($MaxRetries -gt 1) {
-                Write-Host "  Qdrant healthy (port 6333)"
-            }
-            Write-DetectResult "HEALTHY"
-            exit 0
         }
 
-        # 进度消息 — 只在多轮轮询时显示
         if ($MaxRetries -gt 1) {
             Write-Host "  Waiting for Qdrant... ($i/$MaxRetries)"
         }
@@ -394,5 +389,6 @@ if ($Action -eq "start") {
     exit 1
 }
 
-Write-Host "  [ERROR] Unknown action: $Action"
+# start 动作已移除
+# Write-Host "  [ERROR] Unknown action: $Action"
 exit 1
