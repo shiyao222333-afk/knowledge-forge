@@ -337,6 +337,7 @@ def search(
             "source":          payload.get("source", "未知"),
             "score":           round(r.get("score", 0), 4),
             "chunk_index":     payload.get("chunk_index", 0),
+            "total_chunks":    payload.get("total_chunks", 0),
             "doc_id":          payload.get("doc_id", ""),
             "content_hash":    payload.get("content_hash", ""),
             "doc_uid":        payload.get("doc_uid", ""),
@@ -359,6 +360,7 @@ def search(
             "relations":       payload.get("relations", []),
             "keywords":        payload.get("keywords", []),
             "auto_summary":    payload.get("auto_summary", ""),
+            "needs_review":   payload.get("needs_review", False),
             # 分组字段
             "timeline":        payload.get("timeline", {}),
             "origin":          payload.get("origin", {}),
@@ -372,6 +374,8 @@ def search(
             "access_level":    payload.get("access_level", "private"),
             "batch_id":        payload.get("batch_id", ""),
             "is_archived":     payload.get("is_archived", False),
+            "confidence":      payload.get("confidence", None),
+            "field_sources":   payload.get("field_sources", {}),
             # 重排序分数（如果有）
             "rerank_score":   r.get("rerank_score", None),
         })
