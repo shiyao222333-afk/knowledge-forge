@@ -3,6 +3,22 @@ REM ============================================================
 REM  Citrinitas · 熔知 - One-Click Launcher
 REM ============================================================
 chcp 65001 > nul
+
+REM ------------------------------------------------------------
+REM  管理员权限自动提升
+REM ------------------------------------------------------------
+REM 检测当前是否已有管理员权限（net session 在非管理员下返回错误）
+net session >nul 2>&1
+if %ERRORLEVEL% EQU 0 goto :got_admin
+
+REM 没有管理员权限 → 自动请求提升
+echo.
+echo [权限] 检测到需要管理员权限，正在请求 UAC 提升...
+echo [权限] 请点击"是"允许此程序以管理员身份运行。
+powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+exit /b
+
+:got_admin
 setlocal enabledelayedexpansion
 
 set "PROJECT_DIR=%~dp0"
