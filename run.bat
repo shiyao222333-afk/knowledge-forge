@@ -59,7 +59,7 @@ set "CFG_FILE=%PROJECT_DIR%pipe_cfg.yaml"
 set "CFG_STAMP=%PROJECT_DIR%local_data\pipe_cfg_stamp.txt"
 
 if not exist "%CFG_FILE%" (
-    echo   [!] pipe_cfg.yaml missing. Please run install.ps1.
+    echo   [^^!] pipe_cfg.yaml missing. Please run install.ps1.
     goto :skip_cfg_check
 )
 
@@ -94,16 +94,16 @@ if %ERRORLEVEL% EQU 0 (
         echo   Checking embed model...
         ollama list 2>NUL | findstr /C:"qwen3-embedding" >NUL
         if %ERRORLEVEL% EQU 0 (
-            echo   Embed model ready (qwen3-embedding)
+            echo   Embed model ready (qwen3-embedding^)
         ) else (
-            echo   [!] Embed model not found. Please run: ollama pull qwen3-embedding:4b
+            echo   [^^!] Embed model not found. Please run: ollama pull qwen3-embedding:4b
         )
     ) else (
-        echo   [!] Ollama installed but not running. Start Ollama first.
+        echo   [^^!] Ollama installed but not running. Start Ollama first.
         echo   Vector embedding will not work without Ollama.
     )
 ) else (
-    echo   [!] Ollama not installed. Vector embedding will not work.
+    echo   [^^!] Ollama not installed. Vector embedding will not work.
     echo   Install from: https://ollama.com
 )
 
@@ -117,7 +117,7 @@ if exist "%PROJECT_DIR%.env" (
       "  catch { Write-Host ('  [!] LLM API unreachable: ' + $_.Exception.Message) } " ^
       "} elseif ($key) { Write-Host '  [!] KB_LLM_BASE_URL not set, skipping API check' }"
 ) else (
-    echo   [!] .env not found. LLM API key not configured.
+    echo   [^^!] .env not found. LLM API key not configured.
     echo   AI classification will not work.
 )
 
@@ -184,7 +184,7 @@ if /i "!QDRANT_INSTALL!"=="Y" (
     pause
     exit /b 1
 ) else (
-    echo   [!] Skipping Qdrant. Vector search will be disabled.
+    echo   [^^!] Skipping Qdrant. Vector search will be disabled.
     set "QDRANT_SKIP=1"
     goto :skip_qdrant
 )
@@ -255,7 +255,7 @@ venv\Scripts\python.exe warmup.py
 if %ERRORLEVEL% EQU 0 (
     echo   Models warmed up successfully.
 ) else (
-    echo   [!] Model warmup failed ^(some models may be unavailable^)
+    echo   [^^!] Model warmup failed ^(some models may be unavailable^)
 )
 
 REM ============================================================

@@ -220,8 +220,8 @@ def build_left_drawer():
 def render_chunk_card(c: dict, idx: int):
     """渲染搜索结果卡片（U4 修复 - 显示新字段）"""
     with ui.card().classes("w-full"):
-    title = c.get("title") or c.get("source") or "未知"
-    ui.markdown(f"**{idx}.** {title}")
+        title = c.get("title") or c.get("source") or "未知"
+        ui.markdown(f"**{idx}.** {title}")
 
         # 显示新字段（U4 修复）
         with ui.row().classes("items-center gap-2 wrap"):
