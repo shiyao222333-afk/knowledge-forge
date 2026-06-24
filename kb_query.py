@@ -607,6 +607,8 @@ def get_facet_stats(collection: str = None) -> dict:
         collection = ACTIVE_COLLECTION
 
     try:
+        import requests as _req
+
         facet_counts = {
             "content_type": {},
             "domain": {},
@@ -616,19 +618,26 @@ def get_facet_stats(collection: str = None) -> dict:
 
         offset = None
         while True:
-            points, offset = client.scroll(
-                collection_name=collection,
-                limit=1000,
-                offset=offset,
-                with_payload=True,
-                with_vectors=False,
+            payload = {"limit": 1000, "with_payload": True, "with_vectors": False}
+            if offset is not None:
+                payload["offset"] = offset
+
+            resp = _req.post(
+                f"{QDRANT_URL}/collections/{collection}/points/scroll",
+                json=payload,
+                timeout=30,
             )
+            resp.raise_for_status()
+            data = resp.json()
+
+            points = data.get("result", {}).get("points", [])
+            offset = data.get("result", {}).get("next_page_offset")
 
             if not points:
                 break
 
             for point in points:
-                payload = point.payload
+                payload = point.get("payload", {})
                 for facet in facet_counts:
                     value = payload.get(facet, "unknown")
                     if isinstance(value, list):
