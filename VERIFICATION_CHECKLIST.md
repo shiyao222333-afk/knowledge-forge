@@ -220,9 +220,9 @@
 ### 静态检查
 
 1. **语法检查**
-   ```bash
-   python -m py_compile search_engine.py watcher_v2.py ingest_pipeline.py text_pipeline.py
-   ```
+```bash
+python -m py_compile search_engine.py watcher_v2.py ingest_pipeline.py text_pipeline.py main.py qconst.py warmup.py ocr_workflow.py
+```
    - [ ] 无语法错误
 
 2. **代码长度检查**

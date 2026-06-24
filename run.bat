@@ -150,7 +150,7 @@ set /a QDRANT_RETRY=0
 :retry_qdrant
 timeout /t 2 /nobreak > nul
 set /a QDRANT_RETRY+=1
-powershell -Command "try { (Invoke-WebRequest -Uri 'http://127.0.0.1:6333/health' -TimeoutSec 2).Content } catch { exit 1 }" >NUL 2>NUL
+powershell -Command "try { (Invoke-WebRequest -Uri 'http://127.0.0.1:6333/readyz' -TimeoutSec 2).Content } catch { exit 1 }" >NUL 2>NUL
 if %ERRORLEVEL% EQU 0 (
     echo   Qdrant healthy ^(port 6333^)
     goto :skip_qdrant
