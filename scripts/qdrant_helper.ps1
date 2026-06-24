@@ -289,7 +289,7 @@ if ($Action -eq "start") {
     $tmpFile = Join-Path $env:TEMP "qdrant_detect_result.txt"
     $qdrantExe = ""
     if (Test-Path $tmpFile) {
-        $qdrantExe = Get-Content $tmpFile -First 1
+        $qdrantExe = Get-Content $tmpFile -Encoding UTF8 -First 1
     }
 
     if (-not $qdrantExe -or -not (Test-Path $qdrantExe)) {
