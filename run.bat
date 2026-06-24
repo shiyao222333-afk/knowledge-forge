@@ -18,10 +18,24 @@ REM ============================================================
 REM  Step 1: 清理旧进程
 REM ============================================================
 echo [1/8] Cleaning up stale processes...
-for /f "tokens=5" %%a in ('netstat -ano 2^>NUL ^| findstr ":8080 " ^| findstr "LISTENING"') do (
-    echo   Killing old process on port 8080 [PID %%a]
-    taskkill /PID %%a /F 2>NUL
-    timeout /t 2 /nobreak > nul
+REM 杀所有占用 8080 的进程（不只第一个），杀完验证端口已释放
+set "PORT_FREE=0"
+for /l %%x in (1,1,5) do (
+    if "!PORT_FREE!"=="1" (
+        rem 端口已释放，跳过
+    ) else (
+        for /f "tokens=5" %%a in ('netstat -ano 2^>NUL ^| findstr ":8080 " ^| findstr "LISTENING"') do (
+            echo   Killing old process on port 8080 [PID %%a]
+            taskkill //PID %%a //F 2>NUL
+        )
+        timeout /t 1 /nobreak > nul
+        REM 验证端口是否已释放
+        netstat -ano 2>NUL | findstr ":8080 " | findstr "LISTENING" >NUL
+        if errorlevel 1 set "PORT_FREE=1"
+    )
+)
+if "!PORT_FREE!"=="0" (
+    echo   [WARNING] Port 8080 still occupied after cleanup. May fail to bind.
 )
 echo   OK
 

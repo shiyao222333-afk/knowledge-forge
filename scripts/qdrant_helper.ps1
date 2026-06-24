@@ -56,15 +56,16 @@ if ($Action -eq "detect") {
         $tcp.Close()
     } catch {}
 
-    # 端口通了再验证 HTTP 响应（用 curl.exe，不靠 PowerShell cmdlet）
+    # 端口通了再验证 Qdrant HTTP 响应
+    # 必须同时满足 TcpClient 端口通 + curl.exe /healthz 返回内容含 "ok"
     if ($apiAlive) {
+        $apiAlive = $false
         try {
-            $httpCode = & curl.exe -s -o NUL --connect-timeout 2 "http://127.0.0.1:6333" 2>&1
-            if ($LASTEXITCODE -eq 0) { $apiAlive = $true } else { $apiAlive = $false }
-        } catch {
-            # 端口通但 HTTP 无响应，也算 alive（可能 Qdrant 在但 HTTP 有点问题）
-            $apiAlive = $true
-        }
+            $resp = & curl.exe -s --connect-timeout 3 --max-time 5 "http://127.0.0.1:6333/healthz" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $resp -match "ok") {
+                $apiAlive = $true
+            }
+        } catch {}
     }
 
     if ($apiAlive) {

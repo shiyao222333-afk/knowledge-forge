@@ -312,6 +312,11 @@ WATCH_V2_DLQ_TTL_DAYS = _yaml_or_env(
 WATCH_V2_NOTIFY_ON_FATAL = _yaml_or_env(
     "watch_v2.failure_strategies.notify_on_fatal", "KB_WATCH_V2_NOTIFY_ON_FATAL", True, cast=bool,
 )
+# 关闭超时
+WATCH_V2_PROCESS_TIMEOUT = _yaml_or_env(
+    "watch_v2.process_timeout", "KB_WATCH_V2_PROCESS_TIMEOUT", 30, cast=int,
+    validator=lambda v: None if v >= 1 else "must be >= 1",
+)
 
 
 def _get_v2_temp_patterns():
