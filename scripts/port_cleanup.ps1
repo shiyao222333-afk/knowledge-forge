@@ -12,7 +12,7 @@ function Write-Log($msg) {
     Write-Host "  $msg"
 }
 
-function Get-PortPids {
+function Get-PortProcessIds {
     param([int]$PortNumber)
     # Use Get-NetTCPConnection (most reliable on Windows 8+)
     try {
@@ -24,41 +24,41 @@ function Get-PortPids {
     catch {
         # Fallback to netstat if Get-NetTCPConnection is not available
         $lines = netstat -ano | Select-String ":$PortNumber\s+.*LISTENING"
-        $pids = @()
+        $procIds = @()
         foreach ($line in $lines) {
             $parts = $line -split '\s+'
-            $pid = $parts[-1]
-            if ($pid -match '^\d+$') {
-                $pids += [int]$pid
+            $procId = $parts[-1]
+            if ($procId -match '^\d+$') {
+                $procIds += [int]$procId
             }
         }
-        return $pids | Sort-Object -Unique
+        return $procIds | Sort-Object -Unique
     }
     return @()
 }
 
-function Get-ProcessInfo {
-    param([int]$Pid)
+function Get-ProcessDescription {
+    param([int]$ProcessId)
     try {
-        $proc = Get-Process -Id $Pid -ErrorAction SilentlyContinue
+        $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
         if ($proc) {
-            return "$($proc.ProcessName) (PID $Pid, Started: $($proc.StartTime))"
+            $startTimeStr = "unknown"
+            try { $startTimeStr = $proc.StartTime } catch { }
+            return "$($proc.ProcessName) (PID $ProcessId, Started: $startTimeStr)"
         }
     }
     catch { }
-    return "PID $Pid (unable to get process info)"
+    return "PID $ProcessId (unable to get process info)"
 }
 
-function Kill-Pid {
-    param([int]$Pid)
-    $killed = $false
-
+function Kill-ProcessById {
+    param([int]$ProcessId)
+    
     # Method 1: taskkill /F (most forceful Windows command)
     try {
-        $result = taskkill /F /PID $Pid 2>&1
+        $result = taskkill /F /PID $ProcessId 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Log "Killed PID $Pid (taskkill)"
-            $killed = $true
+            Write-Log "Killed PID $ProcessId (taskkill)"
             return $true
         }
     }
@@ -66,26 +66,25 @@ function Kill-Pid {
 
     # Method 2: Stop-Process -Force (PowerShell native)
     try {
-        Stop-Process -Id $Pid -Force -ErrorAction Stop
-        Write-Log "Killed PID $Pid (Stop-Process)"
-        $killed = $true
+        Stop-Process -Id $ProcessId -Force -ErrorAction Stop
+        Write-Log "Killed PID $ProcessId (Stop-Process)"
         return $true
     }
     catch { }
 
     # Method 3: Kill process tree (handle child processes)
     try {
-        $proc = Get-Process -Id $Pid -ErrorAction SilentlyContinue
+        $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
         if ($proc) {
             # Get child processes
-            $children = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $Pid } | Select-Object -ExpandProperty ProcessId
-            foreach ($childPid in $children) {
-                try { taskkill /F /PID $childPid 2>&1 | Out-Null } catch { }
+            $children = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $ProcessId } | Select-Object -ExpandProperty ProcessId
+            foreach ($childProcId in $children) {
+                try { taskkill /F /PID $childProcId 2>&1 | Out-Null } catch { }
             }
             # Try taskkill again on parent
-            taskkill /F /PID $Pid 2>&1 | Out-Null
+            taskkill /F /PID $ProcessId 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) {
-                Write-Log "Killed PID $Pid (with children)"
+                Write-Log "Killed PID $ProcessId (with children)"
                 return $true
             }
         }
@@ -99,8 +98,8 @@ function Wait-ForPortFree {
     param([int]$PortNumber, [int]$TimeoutSec)
     $elapsed = 0
     while ($elapsed -lt $TimeoutSec) {
-        $pids = Get-PortPids -PortNumber $PortNumber
-        if (-not $pids -or $pids.Count -eq 0) {
+        $procIds = Get-PortProcessIds -PortNumber $PortNumber
+        if (-not $procIds -or $procIds.Count -eq 0) {
             return $true
         }
         Start-Sleep -Milliseconds 500
@@ -111,52 +110,52 @@ function Wait-ForPortFree {
 
 # ========== Main ==========
 
-Write-Log "Checking port $Port..."
+Write-Log "Checking port ${Port}..."
 
-$pids = Get-PortPids -PortNumber $Port
-if (-not $pids -or $pids.Count -eq 0) {
-    Write-Log "Port $Port is free."
+$procIds = Get-PortProcessIds -PortNumber $Port
+if (-not $procIds -or $procIds.Count -eq 0) {
+    Write-Log "Port ${Port} is free."
     exit 0
 }
 
 Write-Log "Found processes occupying port ${Port}:"
-foreach ($pid in $pids) {
-    Write-Log "  $(Get-ProcessInfo -Pid $pid)"
+foreach ($procId in $procIds) {
+    Write-Log "  $(Get-ProcessDescription -ProcessId $procId)"
 }
 
 $killedAny = $false
-foreach ($pid in $pids) {
-    Write-Log "Killing PID $pid..."
-    $success = Kill-Pid -Pid $pid
+foreach ($procId in $procIds) {
+    Write-Log "Killing PID $procId..."
+    $success = Kill-ProcessById -ProcessId $procId
     if ($success) {
         $killedAny = $true
     }
     else {
-        Write-Log "  [WARNING] Failed to kill PID $pid (may need admin)"
+        Write-Log "  [WARNING] Failed to kill PID $procId (may need admin)"
     }
 }
 
 if ($killedAny) {
     # Wait for port to be released
-    Write-Log "Waiting for port $Port to be released..."
+    Write-Log "Waiting for port ${Port} to be released..."
     $freed = Wait-ForPortFree -PortNumber $Port -TimeoutSec ($WaitSeconds * 2)
     if (-not $freed) {
-        Write-Log "  [WARNING] Port $Port still occupied after killing processes."
+        Write-Log "  [WARNING] Port ${Port} still occupied after killing processes."
         Write-Log "  Process details:"
-        $remainingPids = Get-PortPids -PortNumber $Port
-        foreach ($remainingPid in $remainingPids) {
-            Write-Log "    $(Get-ProcessInfo -Pid $remainingPid)"
+        $remainingProcIds = Get-PortProcessIds -PortNumber $Port
+        foreach ($remainingProcId in $remainingProcIds) {
+            Write-Log "    $(Get-ProcessDescription -ProcessId $remainingProcId)"
         }
         exit 1
     }
-    Write-Log "Port $Port is now free."
+    Write-Log "Port ${Port} is now free."
     exit 0
 }
 else {
-    Write-Log "[ERROR] Could not kill any process on port $Port."
+    Write-Log "[ERROR] Could not kill any process on port ${Port}."
     Write-Log "Please run as Administrator or kill manually:"
-    foreach ($pid in $pids) {
-        Write-Log "  taskkill /F /PID $pid"
+    foreach ($procId in $procIds) {
+        Write-Log "  taskkill /F /PID $procId"
     }
     exit 1
 }
