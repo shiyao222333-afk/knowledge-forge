@@ -21,7 +21,8 @@ function Write-DetectResult {
     param([string]$Result)
     # 写到临时文件，run.bat 会读取这个文件
     $tmpFile = Join-Path $env:TEMP "qdrant_detect_result.txt"
-    Set-Content -Path $tmpFile -Value $Result -Encoding UTF8
+    # 使用无 BOM 的 UTF-8 编码，避免 for /f 读取时出现问题
+    [System.IO.File]::WriteAllText($tmpFile, $Result, [System.Text.UTF8Encoding]::new($false))
 }
 
 function Get-EnvQdrantPath {
@@ -271,6 +272,91 @@ if ($Action -eq "health") {
     Write-Host "  [ERROR] Qdrant did not start within $($MaxRetries * $RetryDelay) seconds."
     Write-Host "  Please check Qdrant installation manually."
     Write-DetectResult "UNHEALTHY"
+    exit 1
+}
+
+# ─────────────────────────────────────────────
+# 4. 启动 Qdrant + 健康检查
+#    参数: -ProjectDir 项目目录（用于查找本地 Qdrant）
+#          -MaxRetries 最大重试次数（默认 30）
+#          -RetryDelay 重试间隔秒数（默认 2）
+#    流程: 从临时文件读取 Qdrant 路径
+#          ↓ 路径有效 → 启动 Qdrant 进程
+#          ↓ 启动成功 → 调用 health action 逻辑检查就绪
+# ─────────────────────────────────────────────
+if ($Action -eq "start") {
+    # 从临时文件读取 Qdrant 路径
+    $tmpFile = Join-Path $env:TEMP "qdrant_detect_result.txt"
+    $qdrantExe = ""
+    if (Test-Path $tmpFile) {
+        $qdrantExe = Get-Content $tmpFile -First 1
+    }
+
+    if (-not $qdrantExe -or -not (Test-Path $qdrantExe)) {
+        Write-Host "  [ERROR] Qdrant path not found in temp file. Please run detect first."
+        exit 1
+    }
+
+    # 检查是否已在运行
+    $alreadyRunning = $false
+    try {
+        $proc = Get-Process qdrant -ErrorAction Stop
+        # 检查是否健康
+        try {
+            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:6333/collections" -Method GET -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
+            if ($resp.StatusCode -eq 200) {
+                $alreadyRunning = $true
+            }
+        } catch { }
+    } catch { }
+
+    if ($alreadyRunning) {
+        Write-Host "  Qdrant is already running and healthy (port 6333)"
+        exit 0
+    }
+
+    # 启动 Qdrant
+    $qdrantDir = Split-Path $qdrantExe -Parent
+    Write-Host "  Starting Qdrant: $qdrantExe"
+    Write-Host "  Working directory: $qdrantDir"
+
+    $proc = Start-Process -FilePath $qdrantExe -WorkingDirectory $qdrantDir -WindowStyle Hidden -PassThru
+    if (-not $proc) {
+        Write-Host "  [ERROR] Failed to start Qdrant process."
+        exit 1
+    }
+    Write-Host "  Qdrant process started (PID: $($proc.Id))"
+
+    # 健康检查（复用 health action 的逻辑）
+    $healthRetries = if ($MaxRetries -gt 0) { $MaxRetries } else { 30 }
+    $healthDelay = if ($RetryDelay -gt 0) { $RetryDelay } else { 2 }
+
+    for ($i = 1; $i -le $healthRetries; $i++) {
+        $connected = $false
+        try {
+            $tcp = New-Object System.Net.Sockets.TcpClient
+            $iar = $tcp.BeginConnect("127.0.0.1", 6333, $null, $null)
+            $wait = $iar.AsyncWaitHandle.WaitOne(2000)
+            if ($wait) {
+                $tcp.EndConnect($iar) | Out-Null
+                $connected = $true
+            }
+            $tcp.Close()
+        } catch {}
+
+        if ($connected) {
+            Write-Host "  Qdrant healthy (port 6333)"
+            exit 0
+        }
+
+        Write-Host "  Waiting for Qdrant... ($i/$healthRetries)"
+        if ($i -lt $healthRetries) {
+            Start-Sleep -Seconds $healthDelay
+        }
+    }
+
+    Write-Host "  [ERROR] Qdrant did not start within $($healthRetries * $healthDelay) seconds."
+    Write-Host "  Please check Qdrant installation manually."
     exit 1
 }
 
