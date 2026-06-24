@@ -15,25 +15,17 @@ echo ============================================================
 echo.
 
 REM ============================================================
-REM  Step 1: 清理旧进程
+REM  Step 1: 清理旧进程（使用专用 PowerShell 脚本）
 REM ============================================================
 echo [1/8] Cleaning up stale processes...
-REM 使用 PowerShell 一次性杀死所有占用 8080 的进程，避免 batch 嵌套解析问题
-powershell -NoProfile -Command ^
-  "$killed=0; netstat -ano | Select-String ':8080.*LISTENING' | ForEach-Object {" ^
-  "  $p = ($_ -split '\s+')[-1];" ^
-  "  try { Stop-Process -Id $p -Force -ErrorAction Stop; Write-Host ('  Killed PID '+$p); $killed++ }" ^
-  "  catch { Write-Host ('  Cannot kill PID '+$p+' (may need admin)') }" ^
-  "}; if ($killed -eq 0) { Write-Host '  No stale processes on port 8080' }"
-REM 等待 2 秒确认端口释放
-timeout /t 2 /nobreak > nul
-netstat -ano 2>NUL | findstr ":8080 " | findstr "LISTENING" >NUL
-if errorlevel 1 (
-    echo   OK
-) else (
-    echo   [WARNING] Port 8080 still occupied. Run as Administrator if needed.
-    echo   OK
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%scripts\port_cleanup.ps1" -Port 8080
+if %ERRORLEVEL% NEQ 0 (
+    echo   [ERROR] Could not free port 8080. Please kill the process manually.
+    echo   Run: taskkill /F /PID ^<pid^>
+    pause
+    exit /b 1
 )
+echo   OK
 
 REM ============================================================
 REM  Step 2: 检查 Python 环境 + 依赖完整性 (P1-6)
@@ -66,7 +58,7 @@ REM ============================================================
 echo.
 echo [3/8] Checking config changes...
 set "CFG_FILE=%PROJECT_DIR%pipe_cfg.yaml"
-set "CFG_STAMP=%PROJECT_DIR%local_data\pipe_cfg_stamp.txt"
+set "CFG_STAMP=%TEMP%\citrinitas_pipe_cfg_stamp.txt"
 
 if not exist "%CFG_FILE%" (
     echo   [^^!] pipe_cfg.yaml missing. Please run install.ps1.
@@ -137,20 +129,34 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%scripts\qdrant
 set "QDRANT_RESULT="
 set "QDRANT_TMP=%TEMP%\qdrant_detect_result.txt"
 if exist "!QDRANT_TMP!" (
-    for /f "delims=" %%r in (!QDRANT_TMP!) do set "QDRANT_RESULT=%%r"
+    for /f "usebackq delims=" %%r in ("!QDRANT_TMP!") do set "QDRANT_RESULT=%%r"
 )
 
 REM 检查检测结果
 if "!QDRANT_RESULT!"=="API_ALREADY_RUNNING" (
-    echo   Qdrant is already running ^(API responding on port 6333^)
+    echo   Qdrant is already running and healthy ^(port 6333^)
     set "QDRANT_SKIP=0"
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%scripts\qdrant_helper.ps1" -Action health -MaxRetries 3 -RetryDelay 2 >NUL 2>&1
-    if !ERRORLEVEL! NEQ 0 (
-        echo   [WARNING] Qdrant health check failed. Continuing anyway, may fail later.
-    ) else (
-        echo   Qdrant healthy ^(port 6333^)
-    )
     goto :skip_qdrant
+)
+
+if "!QDRANT_RESULT!"=="ZOMBIE" (
+    echo   Qdrant process exists but not responding. Killing zombie...
+    taskkill /F /IM qdrant.exe 2>NUL
+    timeout /t 2 /nobreak >NUL
+    echo   Re-detecting Qdrant binary...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%scripts\qdrant_helper.ps1" -Action detect -ProjectDir "%PROJECT_DIR%" >NUL 2>&1
+    set "QDRANT_RESULT="
+    if exist "!QDRANT_TMP!" (
+        for /f "usebackq delims=" %%r in ("!QDRANT_TMP!") do set "QDRANT_RESULT=%%r"
+    )
+    if not "!QDRANT_RESULT!"=="" (
+        set "QDRANT_EXE=!QDRANT_RESULT!"
+        echo   Found Qdrant: !QDRANT_EXE!
+        goto :launch_qdrant
+    )
+    echo   [ERROR] Qdrant binary not found after killing zombie.
+    pause
+    exit /b 1
 )
 
 if not "!QDRANT_RESULT!"=="" (
@@ -174,7 +180,7 @@ if /i "!QDRANT_INSTALL!"=="Y" (
         set "QDRANT_RESULT="
         set "QDRANT_TMP=%TEMP%\qdrant_detect_result.txt"
         if exist "!QDRANT_TMP!" (
-            for /f "delims=" %%r in (!QDRANT_TMP!) do set "QDRANT_RESULT=%%r"
+            for /f "usebackq delims=" %%r in ("!QDRANT_TMP!") do set "QDRANT_RESULT=%%r"
         )
         if not "!QDRANT_RESULT!"=="" (
             set "QDRANT_EXE=!QDRANT_RESULT!"

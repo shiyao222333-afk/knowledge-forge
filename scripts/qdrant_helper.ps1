@@ -41,14 +41,40 @@ function Get-EnvQdrantPath {
 # 1. 检测 Qdrant
 # ─────────────────────────────────────────────
 if ($Action -eq "detect") {
-    # 1a. 检查 qdrant.exe 进程是否在运行（唯一不会撒谎的检测方式）
-    #     TcpClient + curl 组合存在假阳性问题（端口可能被其他程序占用、
-    #     或 Qdrant 在崩溃边缘短暂响应，但随后立即不可用）
-    #     Get-Process qdrant 如果返回进程 → Qdrant 100% 在运行
+    # 1a. 检查 qdrant.exe 进程是否在运行
     try {
         $proc = Get-Process qdrant -ErrorAction Stop
-        Write-DetectResult "API_ALREADY_RUNNING"
-        exit 0
+        # 进程存在，做快速健康检查（2次重试，判断是否是僵尸）
+        $healthy = $false
+        for ($i = 1; $i -le 2; $i++) {
+            try {
+                $tcp = New-Object System.Net.Sockets.TcpClient
+                $iar = $tcp.BeginConnect("127.0.0.1", 6333, $null, $null)
+                $wait = $iar.AsyncWaitHandle.WaitOne(1500)
+                if ($wait) {
+                    $tcp.EndConnect($iar) | Out-Null
+                    $tcp.Close()
+                    $healthy = $true
+                    break
+                }
+                $tcp.Close()
+            } catch { }
+            if ($i -lt 2) { Start-Sleep -Seconds 1 }
+        }
+        if ($healthy) {
+            Write-DetectResult "API_ALREADY_RUNNING"
+            exit 0
+        } else {
+            # 进程存在但不响应 → 僵尸进程，返回路径让 run.bat 杀掉重启
+            $qdrantPath = ""
+            try { $qdrantPath = $proc.MainModule.FileName } catch { $qdrantPath = "" }
+            if ($qdrantPath) {
+                Write-DetectResult $qdrantPath
+            } else {
+                Write-DetectResult "ZOMBIE"
+            }
+            exit 0
+        }
     } catch {
         # qdrant.exe 未运行，继续搜索二进制文件
     }
