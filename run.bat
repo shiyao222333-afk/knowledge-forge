@@ -68,15 +68,11 @@ if not exist "%CFG_FILE%" (
 if not exist "%PROJECT_DIR%local_data" mkdir "%PROJECT_DIR%local_data"
 
 REM 计算当前配置哈希，对比上次存储的哈希
-powershell -Command ^
-  "$cfg = [System.IO.File]::ReadAllBytes($env:CFG_FILE); $hash = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash($cfg)).Replace('-','');" ^
-  "$old=''; if (Test-Path $env:CFG_STAMP) { $old = [System.IO.File]::ReadAllText($env:CFG_STAMP).Trim() };" ^
-  "if ($old -and $old -ne $hash) { Write-Host '  [NOTICE] pipe_cfg.yaml has changed since last run. Restart to apply new settings.' };" ^
-  "[System.IO.File]::WriteAllText($env:CFG_STAMP, $hash)"
+powershell -NoProfile -Command "$cfg = [System.IO.File]::ReadAllBytes($env:CFG_FILE); $hash = [System.BitConverter]::ToString((New-Object System.Security.Cryptography.SHA256Managed).ComputeHash($cfg)).Replace('-',''); $old=''; if (Test-Path $env:CFG_STAMP) { $old = [System.IO.File]::ReadAllText($env:CFG_STAMP).Trim() }; if ($old -and $old -ne $hash) { Write-Host '  [NOTICE] pipe_cfg.yaml has changed since last run. Restart to apply new settings.' }; [System.IO.File]::WriteAllText($env:CFG_STAMP, $hash)" 2>NUL
 if %ERRORLEVEL% EQU 0 (
     echo   Config check OK
 ) else (
-    echo   Config check skipped ^(PowerShell error^)
+    echo   Config check skipped (PowerShell error)
 )
 
 :skip_cfg_check

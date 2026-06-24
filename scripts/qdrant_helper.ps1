@@ -67,7 +67,7 @@ if ($Action -eq "detect") {
         } else {
             # 进程存在但不响应 → 僵尸进程，返回路径让 run.bat 杀掉重启
             $qdrantPath = ""
-            try { $qdrantPath = $proc.MainModule.FileName } catch { $qdrantPath = "" }
+            try { $qdrantPath = @($proc)[0].MainModule.FileName } catch { $qdrantPath = "" }
             if ($qdrantPath) {
                 Write-DetectResult $qdrantPath
             } else {
