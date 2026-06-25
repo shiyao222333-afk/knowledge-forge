@@ -138,7 +138,7 @@ set "QDRANT_RESULT="
 set "QDRANT_TMP=%TEMP%\qdrant_detect_result.txt"
 if exist "!QDRANT_TMP!" (
     REM 用 PowerShell 读取临时文件（编码安全）
-    for /f "usebackq delims=" %%r in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "& { Get-Content '!QDRANT_TMP!' -Encoding UTF8 -First 1 }"`) do set "QDRANT_RESULT=%%r"
+    for /f "usebackq delims=" %%r in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "& { Get-Content '%QDRANT_TMP%' -Encoding UTF8 -First 1 }"`) do set "QDRANT_RESULT=%%r"
 )
 
 REM 检查检测结果
@@ -189,7 +189,8 @@ if /i "!QDRANT_INSTALL!"=="Y" (
         set "QDRANT_RESULT="
         set "QDRANT_TMP=%TEMP%\qdrant_detect_result.txt"
         if exist "!QDRANT_TMP!" (
-            for /f "usebackq delims=" %%r in ("!QDRANT_TMP!") do set "QDRANT_RESULT=%%r"
+            REM 用 PowerShell 读取临时文件（编码安全）
+            for /f "usebackq delims=" %%r in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "& { Get-Content '!QDRANT_TMP!' -Encoding UTF8 -First 1 }"`) do set "QDRANT_RESULT=%%r"
         )
         if not "!QDRANT_RESULT!"=="" (
             set "QDRANT_EXE=!QDRANT_RESULT!"
